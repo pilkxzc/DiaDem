@@ -1,0 +1,683 @@
+<!DOCTYPE html>
+<html lang="en" data-theme="light">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DiaDem — Decentralized Social Network</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link rel="stylesheet" href="https://unpkg.com/lucide-static@0.460.0/font/lucide.css">
+  <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+
+<!-- ==================== LANDING PAGE ==================== -->
+<div id="page-landing" class="page landing-page">
+  <nav class="landing-nav">
+    <span class="logo">DiaDem</span>
+    <div class="landing-nav-links">
+      <a href="#">Features</a>
+      <a href="#">Docs</a>
+      <a href="#">GitHub</a>
+    </div>
+    <div class="landing-nav-right">
+      <a href="#login" class="btn btn-outline" style="border-color:#444;color:#A0A0A0;">Log In</a>
+      <a href="#signup" class="btn" style="background:#FFF;color:#0D0D0D;">Create Wallet</a>
+    </div>
+  </nav>
+
+  <section class="landing-hero">
+    <div class="overline">Fully decentralized. Blockchain + IPFS + P2P. Own everything.</div>
+    <h1>Own Your Social Identity.</h1>
+    <div class="subtitle-italic">No algorithms. No ads. No middlemen.</div>
+    <p>DiaDem is a peer-to-peer social network running in your browser. Your data lives on the blockchain and IPFS content-addressable storage. Automatic peer discovery via signaling. Every browser tab is a full node.</p>
+    <a href="#signup" class="btn-landing">Create Your Wallet →</a>
+  </section>
+
+  <section class="landing-stats">
+    <div class="landing-stat"><div class="val" id="landing-stat-nodes">P2P</div><div class="lbl">Architecture</div></div>
+    <div class="landing-stat"><div class="val">100%</div><div class="lbl">Client-Side</div></div>
+    <div class="landing-stat"><div class="val">0</div><div class="lbl">Servers</div></div>
+    <div class="landing-stat"><div class="val">ECDSA</div><div class="lbl">Cryptography</div></div>
+  </section>
+
+  <section class="landing-section">
+    <div class="section-overline">Architecture</div>
+    <h2>How DiaDem Works</h2>
+    <div class="feature-cards">
+      <div class="feature-card">
+        <h3>Own Blockchain</h3>
+        <p>Custom Proof-of-Stake blockchain with DDM token. Every transaction — posts, follows, likes, transfers — is a signed transaction on-chain.</p>
+      </div>
+      <div class="feature-card">
+        <h3>IPFS Content Storage</h3>
+        <p>IPFS-compatible CAS protocol. Every piece of data is identified by its hash. Content is published to the IPFS network and replicated across peers.</p>
+      </div>
+      <div class="feature-card">
+        <h3>WebRTC P2P Network</h3>
+        <p>Direct peer-to-peer connections via WebRTC. Automatic peer discovery via signaling server. BroadcastChannel for local tabs. No manual setup needed.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-section">
+    <div class="section-overline">Getting Started</div>
+    <h2>From zero to decentralized<br>in 3 steps</h2>
+    <div class="steps">
+      <div class="step">
+        <div class="step-number">01</div>
+        <h3>Generate Wallet</h3>
+        <p>ECDSA P-256 keypair generated in your browser via Web Crypto API. Private key never leaves your device. Your address is your identity.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">02</div>
+        <h3>Get Initial DDM</h3>
+        <p>Genesis block gives you 10,000 DDM on testnet. Use tokens for staking, governance votes, tipping content creators, and social actions.</p>
+      </div>
+      <div class="step">
+        <div class="step-number">03</div>
+        <h3>Connect & Post</h3>
+        <p>Your tab runs a full node with block production. Connect to other peers via WebRTC to sync the blockchain and share content.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="landing-cta">
+    <h2>Every tab is a full node.</h2>
+    <p>Minimal signaling server. No database. Pure blockchain + IPFS + WebRTC.</p>
+    <a href="#signup" class="btn-landing">Launch Your Node →</a>
+  </section>
+
+  <footer class="landing-footer">
+    DiaDem Testnet · Blockchain + IPFS + WebRTC + Signaling · Built with Web Crypto API
+  </footer>
+</div>
+
+<!-- ==================== LOGIN ==================== -->
+<div id="page-login" class="page hidden">
+  <div class="auth-layout">
+    <div class="auth-left">
+      <h2 style="font-size:24px;margin-bottom:32px;">DiaDem <span class="text-muted text-sm">TESTNET</span></h2>
+      <h1 style="font-size:28px;line-height:1.3;">The decentralized social network.<br>Own your identity. Own your data.<br>Own your future.</h1>
+      <div class="auth-features" style="margin-top:40px;">
+        <div class="auth-feature"><i class="icon-lock"></i> ECDSA P-256 cryptographic identity</div>
+        <div class="auth-feature"><i class="icon-coins"></i> Own blockchain with DDM token</div>
+        <div class="auth-feature"><i class="icon-database"></i> IPFS-like content-addressable storage</div>
+        <div class="auth-feature"><i class="icon-wifi"></i> WebRTC peer-to-peer network</div>
+      </div>
+    </div>
+    <div class="auth-right">
+      <div class="auth-form">
+        <h2>Welcome Back</h2>
+        <p class="subtitle">Your wallet is stored locally in this browser.</p>
+        <div id="login-status"></div>
+        <button class="btn btn-primary btn-lg w-full" id="btn-login-existing" style="display:none;" onclick="window.location.hash='home'">Open DiaDem</button>
+        <div class="or-divider">or</div>
+        <a href="#signup" class="btn btn-outline btn-lg w-full" style="text-align:center;">Create New Wallet</a>
+        <p class="text-xs text-muted" style="text-align:center;margin-top:24px;">Your private key never leaves this device.</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== SIGN UP (Create Wallet) ==================== -->
+<div id="page-signup" class="page hidden">
+  <div class="auth-layout">
+    <div class="auth-left">
+      <h2 style="font-size:24px;margin-bottom:32px;">DiaDem <span class="text-muted text-sm">TESTNET</span></h2>
+      <h1 style="font-size:28px;line-height:1.3;">Create Your<br>Blockchain Identity</h1>
+      <p style="margin-top:16px;color:var(--text-secondary);font-size:14px;">
+        Your wallet IS your account. An ECDSA P-256 keypair will be generated<br>
+        in your browser. The private key never leaves your device.
+      </p>
+      <div class="auth-features" style="margin-top:32px;">
+        <div class="auth-feature"><i class="icon-key"></i> Web Crypto API key generation</div>
+        <div class="auth-feature"><i class="icon-shield"></i> Private key stored in localStorage only</div>
+        <div class="auth-feature"><i class="icon-coins"></i> 10,000 DDM testnet tokens</div>
+        <div class="auth-feature"><i class="icon-zap"></i> Instant — no server registration</div>
+      </div>
+    </div>
+    <div class="auth-right">
+      <div class="auth-form">
+        <h2>Generate Wallet</h2>
+        <p class="subtitle">Choose a display name for your profile.</p>
+        <div class="form-group">
+          <label>Display Name</label>
+          <input type="text" class="input-field" id="signup-name" placeholder="e.g. Olena Koval">
+        </div>
+        <button class="btn btn-primary btn-lg w-full" id="btn-create-wallet">
+          Generate Keypair & Create Wallet
+        </button>
+        <div id="signup-status" class="mt-16"></div>
+        <p class="text-xs text-muted" style="text-align:center;margin-top:16px;">
+          Already have a wallet? <a href="#login" style="color:var(--text-primary);font-weight:500;">Sign in</a>
+        </p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== WALLET SETUP (Seed Phrase) ==================== -->
+<div id="page-wallet-setup" class="page hidden">
+  <div class="setup-layout">
+    <div class="setup-left">
+      <h2 style="font-size:24px;margin-bottom:32px;">DiaDem <span class="text-muted text-sm">TESTNET</span></h2>
+      <h1 style="font-size:28px;line-height:1.3;">Save Your<br>Recovery Phrase</h1>
+      <p style="margin-top:16px;color:var(--text-secondary);font-size:14px;">
+        This seed phrase is the ONLY way to recover your wallet.<br>
+        There is no "forgot password" — this is decentralized.
+      </p>
+      <div class="setup-steps" style="margin-top:32px;">
+        <div class="setup-step">
+          <div class="setup-step-num">1</div>
+          <div><h4>Write it down</h4><p>On paper, not digital</p></div>
+        </div>
+        <div class="setup-step">
+          <div class="setup-step-num">2</div>
+          <div><h4>Store safely</h4><p>Never share with anyone</p></div>
+        </div>
+        <div class="setup-step">
+          <div class="setup-step-num">3</div>
+          <div><h4>Verify</h4><p>You can always export later</p></div>
+        </div>
+      </div>
+    </div>
+    <div class="setup-right">
+      <div style="max-width:440px;width:100%;">
+        <div class="card" style="padding:32px;">
+          <h3 class="mb-8">Your Wallet</h3>
+          <div class="form-group">
+            <label>Address</label>
+            <div class="input-field" id="setup-address" style="font-family:monospace;font-size:12px;word-break:break-all;"></div>
+          </div>
+          <div class="form-group">
+            <label>Seed Phrase</label>
+            <div class="seed-grid" id="setup-seed"></div>
+          </div>
+          <div class="form-group">
+            <label>Balance</label>
+            <div class="input-field" style="font-weight:700;color:var(--text-primary);">10,000 DDM (testnet)</div>
+          </div>
+          <button class="btn btn-primary btn-lg w-full" onclick="window.location.hash='home'">
+            I've Saved My Seed Phrase → Enter DiaDem
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- ==================== APP SHELL ==================== -->
+<div id="app-shell" class="app-layout" style="display:none;">
+
+  <aside class="sidebar">
+    <div class="sidebar-logo">
+      <h2>DiaDem</h2>
+      <span class="badge">TESTNET</span>
+    </div>
+    <nav class="sidebar-nav">
+      <a href="#" data-page="home" class="active"><i class="icon-house"></i> Home</a>
+      <a href="#" data-page="explore"><i class="icon-compass"></i> Explore</a>
+      <a href="#" data-page="messages"><i class="icon-message-circle"></i> Messages</a>
+      <a href="#" data-page="notifications"><i class="icon-bell"></i> Notifications</a>
+      <a href="#" data-page="bookmarks"><i class="icon-bookmark"></i> Bookmarks</a>
+      <a href="#" data-page="profile"><i class="icon-user"></i> Profile</a>
+      <a href="#" data-page="wallet"><i class="icon-wallet"></i> Wallet</a>
+      <a href="#" data-page="staking"><i class="icon-landmark"></i> Staking</a>
+      <a href="#" data-page="governance"><i class="icon-vote"></i> Governance</a>
+      <a href="#" data-page="transactions"><i class="icon-arrow-left-right"></i> Transactions</a>
+      <a href="#" data-page="settings"><i class="icon-settings"></i> Settings</a>
+      <a href="#" data-page="peers"><i class="icon-wifi"></i> Peers</a>
+    </nav>
+    <div class="sidebar-bottom">
+      <button class="btn-new-post" id="btn-compose">New Post</button>
+      <div id="node-status" style="margin-top:12px;"></div>
+    </div>
+  </aside>
+
+  <!-- HOME FEED -->
+  <div id="page-home" class="page main-content">
+    <div class="content-area">
+      <div class="page-header"><h2>Feed</h2></div>
+      <div id="feed-posts"></div>
+    </div>
+    <div class="right-panel">
+      <div class="card card-sm mb-16">
+        <h4 class="mb-8">DDM Token</h4>
+        <div id="token-info" style="font-size:14px;color:var(--text-secondary);">Loading...</div>
+      </div>
+      <div class="card card-sm">
+        <h4 class="mb-8">Node Info</h4>
+        <div id="right-panel-info" style="font-size:13px;color:var(--text-secondary);">Loading...</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- EXPLORE -->
+  <div id="page-explore" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Explore</h2></div>
+      <div id="explore-posts"></div>
+    </div>
+  </div>
+
+  <!-- NOTIFICATIONS -->
+  <div id="page-notifications" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Notifications</h2></div>
+      <div id="notifications-data"></div>
+    </div>
+  </div>
+
+  <!-- MESSAGES -->
+  <div id="page-messages" class="page main-content hidden">
+    <div class="content-area full-width" style="padding:0;max-width:none;" id="messages-data"></div>
+  </div>
+
+  <!-- BOOKMARKS -->
+  <div id="page-bookmarks" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Bookmarks</h2></div>
+      <div id="bookmarks-data"></div>
+    </div>
+  </div>
+
+  <!-- SINGLE POST -->
+  <div id="page-single-post" class="page main-content hidden">
+    <div class="content-area" id="single-post-data" style="max-width:700px;"></div>
+  </div>
+
+  <!-- OTHER USER PROFILE -->
+  <div id="page-other-profile" class="page main-content hidden">
+    <div class="content-area full-width" id="other-profile-data" style="padding:0;"></div>
+  </div>
+
+  <!-- SEARCH RESULTS -->
+  <div id="page-search" class="page main-content hidden">
+    <div class="content-area full-width" id="search-data" style="padding:28px 40px;"></div>
+  </div>
+
+  <!-- PROFILE -->
+  <div id="page-profile" class="page main-content hidden">
+    <div class="content-area full-width" id="profile-data" style="padding:0;"></div>
+  </div>
+
+  <!-- EDIT PROFILE -->
+  <div id="page-edit-profile" class="page main-content hidden">
+    <div class="content-area full-width" style="max-width:640px;">
+      <div class="page-header"><h2>Edit Profile</h2></div>
+      <div class="form-group"><label>Display Name</label><input type="text" class="input-field" id="edit-name"></div>
+      <div class="form-group"><label>Handle</label><input type="text" class="input-field" id="edit-handle"></div>
+      <div class="form-group"><label>Bio</label><textarea class="input-field" id="edit-bio"></textarea></div>
+      <div class="flex gap-12">
+        <button class="btn btn-primary btn-lg" onclick="window.diademUI.saveProfile()">Save (creates blockchain tx)</button>
+        <button class="btn btn-outline btn-lg" onclick="window.diademUI.navigate('profile')">Cancel</button>
+      </div>
+      <p class="text-xs text-muted mt-16">Profile updates are stored as transactions on the DiaDem blockchain.</p>
+    </div>
+  </div>
+
+  <!-- WALLET -->
+  <div id="page-wallet" class="page main-content hidden">
+    <div style="flex:1;padding:32px 40px;background:#0D0D0D;color:#F0F0F0;min-height:100vh;" id="wallet-data">
+      Loading wallet...
+    </div>
+  </div>
+
+  <!-- STAKING -->
+  <div id="page-staking" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Staking</h2></div>
+      <div id="staking-data"></div>
+    </div>
+  </div>
+
+  <!-- GOVERNANCE -->
+  <div id="page-governance" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Governance</h2></div>
+      <div id="governance-data"></div>
+    </div>
+  </div>
+
+  <!-- TRANSACTIONS -->
+  <div id="page-transactions" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="page-header"><h2>Transactions</h2></div>
+      <div id="transactions-data"></div>
+    </div>
+  </div>
+
+  <!-- PEERS (P2P Connection) -->
+  <div id="page-peers" class="page main-content hidden">
+    <div class="content-area full-width" style="max-width:700px;">
+      <div class="page-header"><h2>P2P Network</h2></div>
+      <div class="card mb-24">
+        <h4 class="mb-8">Connect to Peer</h4>
+        <p class="text-sm text-muted mb-16">
+          DiaDem uses WebRTC for direct peer-to-peer connections. No signaling server needed —
+          exchange connection codes manually or use BroadcastChannel for tabs on the same device.
+        </p>
+        <div class="form-group">
+          <label>Step 1: Create or paste an offer</label>
+          <textarea class="input-field" id="peer-offer" placeholder="Paste a peer's offer code here, or click 'Create Offer' to generate one"></textarea>
+        </div>
+        <div class="flex gap-12">
+          <button class="btn btn-primary" onclick="window.diademUI.connectPeer()">Create Offer / Accept</button>
+          <button class="btn btn-outline" onclick="window.diademUI.completeAnswer()">Complete with Answer</button>
+        </div>
+      </div>
+      <div class="card">
+        <h4 class="mb-8">Network Status</h4>
+        <div id="peers-status">
+          <div class="text-sm text-muted">BroadcastChannel: Active (syncs between tabs on same device)</div>
+          <div class="text-sm text-muted mt-16">WebRTC peers: checking...</div>
+          <div class="text-sm text-muted mt-16" id="signaling-status">Signaling: connecting...</div>
+          <div class="text-sm text-muted mt-16" id="ipfs-status">IPFS: checking...</div>
+        </div>
+      </div>
+      <div class="card mt-24">
+        <h4 class="mb-8">How P2P Works in DiaDem</h4>
+        <div class="text-sm text-muted" style="line-height:1.8;">
+          <strong style="color:var(--text-primary);">Signaling Server</strong> — WebSocket relay for automatic peer discovery. No manual offer/answer exchange needed.<br>
+          <strong style="color:var(--text-primary);">BroadcastChannel</strong> — Automatic sync between tabs in the same browser. Zero config.<br>
+          <strong style="color:var(--text-primary);">WebRTC DataChannel</strong> — Direct peer-to-peer connections across devices. Uses public STUN servers for NAT traversal.<br>
+          <strong style="color:var(--text-primary);">IPFS Bridge</strong> — Content-addressable data is also published to the IPFS network when a local node is available. Retrieval via public gateways.<br>
+          <strong style="color:var(--text-primary);">Protocol</strong> — HELLO → SYNC_REQUEST → SYNC_RESPONSE → NEW_BLOCK / NEW_TX<br>
+          <strong style="color:var(--text-primary);">Data Replication</strong> — CAS objects (WANT/HAVE/BLOCK) automatically sync between connected peers + IPFS.
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- SETTINGS -->
+  <div id="page-settings" class="page main-content hidden">
+    <div class="content-area full-width">
+      <div class="settings-layout">
+        <div class="settings-nav">
+          <h3>Settings</h3>
+          <a href="#" data-settings="account" class="active"><i class="icon-user"></i> Account</a>
+          <a href="#" data-settings="appearance"><i class="icon-palette"></i> Appearance</a>
+          <a href="#" data-settings="node"><i class="icon-server"></i> Node</a>
+          <a href="#" data-settings="security"><i class="icon-lock"></i> Security</a>
+          <a href="#" data-settings="about"><i class="icon-info"></i> About</a>
+        </div>
+        <div class="settings-content">
+          <!-- Account -->
+          <div id="settings-account" class="settings-page">
+            <h2>Account</h2>
+            <div class="card card-sm mb-16">
+              <div class="text-sm text-muted mb-8">Wallet Address</div>
+              <div id="settings-address" style="font-family:monospace;font-size:13px;color:var(--text-primary);word-break:break-all;"></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Balance</h4><p>Current DDM balance</p></div>
+              <span id="settings-balance" class="font-semibold" style="color:var(--text-primary);">—</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Staked</h4><p>DDM locked in staking</p></div>
+              <span id="settings-staked" class="font-semibold" style="color:var(--text-primary);">—</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Export Seed Phrase</h4><p>Backup your recovery words</p></div>
+              <button class="btn btn-sm btn-outline" onclick="alert(JSON.parse(localStorage.getItem('diadem_wallet'))?.seedPhrase?.join(' ') || 'No seed phrase')">Export</button>
+            </div>
+          </div>
+
+          <!-- Appearance -->
+          <div id="settings-appearance" class="settings-page hidden">
+            <h2 id="settings-appearance-title">Appearance</h2>
+            <div class="setting-row">
+              <div class="setting-info"><h4 id="settings-theme-h4">Theme</h4><p id="settings-theme-p">Switch between light and dark</p></div>
+              <div class="flex items-center gap-12">
+                <span class="text-sm theme-label">Light</span>
+                <div class="toggle theme-toggle"><div class="toggle-dot"></div></div>
+              </div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4 id="settings-lang-h4">Language</h4><p id="settings-lang-p">Choose interface language</p></div>
+              <div id="lang-selector" class="flex items-center gap-8"></div>
+            </div>
+          </div>
+
+          <!-- Node -->
+          <div id="settings-node" class="settings-page hidden">
+            <h2>Node Configuration</h2>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Block Production</h4><p>This node produces blocks every ~10s when there are pending transactions</p></div>
+              <span class="text-green text-sm font-semibold">Active</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Consensus</h4><p>Proof of Stake (PoS)</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">DDM-weighted</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>CAS Protocol</h4><p>Content-addressable storage for data</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">IPFS-compatible</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>IPFS Bridge</h4><p>Publishes CAS data to IPFS network</p></div>
+              <span class="text-sm" id="settings-ipfs-status" style="color:var(--text-primary);">Checking...</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>P2P Transport</h4><p>WebRTC DataChannel + BroadcastChannel</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">Active</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Signaling Server</h4><p>WebSocket relay for automatic peer discovery</p></div>
+              <span class="text-sm" id="settings-signaling-status" style="color:var(--text-primary);">Checking...</span>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div id="settings-security" class="settings-page hidden">
+            <h2>Security</h2>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Key Algorithm</h4><p>Cryptographic algorithm for wallet</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">ECDSA P-256 (Web Crypto API)</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Hashing</h4><p>Hash function for blocks and CAS</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">SHA-256</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info"><h4>Private Key Storage</h4><p>Where your key is stored</p></div>
+              <span class="text-sm" style="color:var(--text-primary);">localStorage (this device only)</span>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <h4 style="color:var(--red);">Reset Node</h4>
+                <p>Delete wallet and all local data</p>
+              </div>
+              <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border:none;" onclick="if(confirm('Delete wallet and all data?')){import('./src/diadem.js').then(m=>m.getNode().then(n=>{n.reset();location.hash='landing';location.reload();}));}">Reset</button>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div id="settings-about" class="settings-page hidden">
+            <h2>About DiaDem</h2>
+            <div style="line-height:2;font-size:14px;">
+              <div><strong>Version:</strong> 0.1.0 (Testnet)</div>
+              <div><strong>Architecture:</strong> Blockchain + CAS + P2P</div>
+              <div><strong>Consensus:</strong> Proof of Stake</div>
+              <div><strong>Token:</strong> DDM (100M total supply)</div>
+              <div><strong>Crypto:</strong> ECDSA P-256 + SHA-256</div>
+              <div><strong>Network:</strong> WebRTC + BroadcastChannel + Signaling</div>
+              <div><strong>Storage:</strong> Content-Addressable (IPFS-compatible)</div>
+              <div><strong>IPFS:</strong> Gateway reads + local node publishing</div>
+              <div><strong>Database:</strong> None (fully on-chain + CAS)</div>
+              <div><strong>Server:</strong> Minimal signaling relay (no data stored)</div>
+            </div>
+            <div class="mt-24 text-sm text-muted">
+              Every browser tab runs a complete DiaDem node with its own<br>
+              blockchain, CAS storage, and P2P networking capability.
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div><!-- end app-shell -->
+
+<!-- COMPOSE MODAL -->
+<div id="compose-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>New Post</h3>
+      <button class="modal-close" id="close-compose"><i class="icon-x" style="font-size:16px;"></i></button>
+    </div>
+    <div class="mb-16">
+      <textarea class="input-field" id="compose-text" placeholder="What's on your mind? (stored on blockchain + CAS)" style="min-height:120px;font-size:15px;"></textarea>
+    </div>
+    <div class="flex items-center justify-between">
+      <div class="text-xs text-muted">Creates a signed transaction on-chain</div>
+      <button class="btn btn-primary" onclick="window.diademUI.submitPost()">Post to Blockchain</button>
+    </div>
+  </div>
+</div>
+
+<!-- TRANSFER MODAL -->
+<div id="transfer-modal" class="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <h3>Send DDM</h3>
+      <button class="modal-close" onclick="this.closest('.modal-overlay').classList.remove('active')"><i class="icon-x" style="font-size:16px;"></i></button>
+    </div>
+    <div class="form-group">
+      <label>Recipient Address</label>
+      <input type="text" class="input-field" id="transfer-to" placeholder="0x...">
+    </div>
+    <div class="form-group">
+      <label>Amount (DDM)</label>
+      <input type="number" class="input-field" id="transfer-amount" placeholder="100">
+    </div>
+    <button class="btn btn-primary btn-lg w-full" onclick="window.diademUI.doTransfer()">Sign & Send Transaction</button>
+    <p class="text-xs text-muted mt-16">Transaction will be signed with your private key and broadcast to peers.</p>
+  </div>
+</div>
+
+<!-- BOOT SCRIPT -->
+<script type="module">
+import { initUI } from './src/ui/app.js';
+import { getNode } from './src/diadem.js';
+
+// Boot the DiaDem node
+(async () => {
+  try {
+    const node = await getNode();
+
+    // Wallet creation handler
+    document.getElementById('btn-create-wallet')?.addEventListener('click', async () => {
+      const name = document.getElementById('signup-name')?.value?.trim() || 'Anonymous';
+      const status = document.getElementById('signup-status');
+      status.innerHTML = '<div class="text-sm">Generating ECDSA P-256 keypair...</div>';
+
+      try {
+        const wallet = await node.createWallet(name);
+
+        // Show seed phrase on setup page
+        document.getElementById('setup-address').textContent = wallet.address;
+        const seedGrid = document.getElementById('setup-seed');
+        seedGrid.innerHTML = wallet.seedPhrase.map((word, i) =>
+          `<div class="seed-word"><span class="num">${i + 1}.</span> ${word}</div>`
+        ).join('');
+
+        window.location.hash = 'wallet-setup';
+      } catch (err) {
+        status.innerHTML = `<div class="text-red text-sm">Error: ${err.message}</div>`;
+      }
+    });
+
+    // Check existing wallet on login page
+    if (node.wallet) {
+      const loginBtn = document.getElementById('btn-login-existing');
+      const loginStatus = document.getElementById('login-status');
+      if (loginBtn) loginBtn.style.display = 'block';
+      if (loginStatus) {
+        loginStatus.innerHTML = `
+          <div class="card card-sm mb-16">
+            <div class="text-sm text-muted">Wallet found</div>
+            <div style="font-family:monospace;font-size:12px;color:var(--text-primary);margin-top:4px;">${node.wallet.address}</div>
+            <div class="text-sm mt-16"><strong>${node.getBalance().toLocaleString()} DDM</strong></div>
+          </div>`;
+      }
+    }
+
+    // Update settings page with wallet info
+    const updateSettings = () => {
+      if (!node.wallet) return;
+      const addrEl = document.getElementById('settings-address');
+      const balEl = document.getElementById('settings-balance');
+      const stakeEl = document.getElementById('settings-staked');
+      if (addrEl) addrEl.textContent = node.wallet.address;
+      if (balEl) balEl.textContent = node.getBalance().toLocaleString() + ' DDM';
+      if (stakeEl) stakeEl.textContent = node.getStake().amount.toLocaleString() + ' DDM';
+
+      // Right panel info
+      const info = node.getNodeInfo();
+      const tokenEl = document.getElementById('token-info');
+      if (tokenEl) tokenEl.innerHTML = `
+        <div class="font-bold" style="font-size:18px;color:var(--text-primary);">${node.getBalance().toLocaleString()} DDM</div>
+        <div class="text-xs text-muted mt-16">Staked: ${node.getStake().amount.toLocaleString()} DDM</div>
+      `;
+      const infoEl = document.getElementById('right-panel-info');
+      if (infoEl) infoEl.innerHTML = `
+        <div>Block #${info.chain.height}</div>
+        <div>Peers: ${info.network.peers} · Signal: ${info.network.signaling}</div>
+        <div>CAS: ${info.cas.objects} objects (${info.cas.size})</div>
+        <div>IPFS: ${info.ipfs?.localNode ? 'node active' : 'gateways'} · ${info.ipfs?.mappedObjects || 0} mapped</div>
+        <div>Posts: ${info.state.totalPosts}</div>
+      `;
+
+      // Update settings page IPFS/signaling status
+      const ipfsStatusEl = document.getElementById('settings-ipfs-status');
+      if (ipfsStatusEl) ipfsStatusEl.textContent = info.ipfs?.localNode ? 'Local node active' : 'Gateways only';
+      const sigStatusEl = document.getElementById('settings-signaling-status');
+      if (sigStatusEl) sigStatusEl.textContent = info.network.signaling === 'connected' ? 'Connected' : 'Disconnected';
+
+      // Update peers page
+      const sigEl = document.getElementById('signaling-status');
+      if (sigEl) sigEl.textContent = `Signaling: ${info.network.signaling}`;
+      const ipfsEl = document.getElementById('ipfs-status');
+      if (ipfsEl) ipfsEl.textContent = `IPFS: ${info.ipfs?.localNode ? 'local node active' : 'gateways only'} · ${info.ipfs?.mappedObjects || 0} objects mapped`;
+    };
+
+    node.on('stateChange', updateSettings);
+    node.on('ready', updateSettings);
+
+    // Edit profile: populate fields
+    const origNav = window.diademUI.navigate;
+    const wrappedNav = (pageId) => {
+      origNav(pageId);
+      if (pageId === 'edit-profile') {
+        const profile = node.getProfile() || {};
+        const nameEl = document.getElementById('edit-name');
+        const handleEl = document.getElementById('edit-handle');
+        const bioEl = document.getElementById('edit-bio');
+        if (nameEl) nameEl.value = profile.name || '';
+        if (handleEl) handleEl.value = profile.handle || '';
+        if (bioEl) bioEl.value = profile.bio || '';
+      }
+      if (pageId === 'settings') updateSettings();
+    };
+    window.diademUI.navigate = wrappedNav;
+
+    // Initialize UI
+    await initUI();
+    updateSettings();
+
+  } catch (err) {
+    console.error('[DiaDem] Boot error:', err);
+    document.body.innerHTML = `<div style="padding:60px;text-align:center;">
+      <h2>DiaDem Node Error</h2>
+      <p style="color:#EF4444;margin-top:16px;">${err.message}</p>
+      <p style="margin-top:8px;color:#6B7280;">Check browser console for details.</p>
+    </div>`;
+  }
+})();
+</script>
+
+</body>
+</html>

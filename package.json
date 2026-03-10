@@ -1,0 +1,13 @@
+{
+  "name": "diadem",
+  "version": "0.1.0",
+  "description": "DiaDem — Decentralized Social Network with Blockchain + IPFS + P2P",
+  "type": "module",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node server.js --dev"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}
