@@ -16,6 +16,7 @@ export class Blockchain {
     this.mempool = []; // Pending transactions
     this.blockCallbacks = []; // Listeners for new blocks
     this.txCallbacks = []; // Listeners for new transactions
+    this.processedTxHashes = new Set(); // Track processed tx hashes to prevent double application
   }
 
   /** Initialize the blockchain with genesis block */
@@ -182,10 +183,21 @@ export class Blockchain {
       block.hash = computedHash;
     }
 
-    // Apply transactions to state
+    // Timestamp validation: block must not be more than 60s in the future
+    if (block.timestamp > Date.now() + 60000) {
+      throw new Error('Block timestamp is too far in the future');
+    }
+    // Block timestamp must not be before the previous block's timestamp
+    if (block.timestamp < prevBlock.timestamp) {
+      throw new Error('Block timestamp is before previous block timestamp');
+    }
+
+    // Apply transactions to state (skip already-processed ones)
     for (const txData of block.transactions) {
       const tx = txData instanceof Transaction ? txData : Transaction.fromJSON(txData);
+      if (tx.hash && this.processedTxHashes.has(tx.hash)) continue;
       this.state.applyTransaction(tx, block.timestamp);
+      if (tx.hash) this.processedTxHashes.add(tx.hash);
     }
 
     // Block reward

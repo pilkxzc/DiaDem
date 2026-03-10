@@ -3289,22 +3289,50 @@ window.diademUI = {
   // ── Stories ──
   createStory() {
     const FILTERS = [
-      { name: 'None', css: '' },
-      { name: 'Warm', css: 'sepia(0.3) saturate(1.4) brightness(1.1)' },
-      { name: 'Cool', css: 'saturate(0.8) hue-rotate(20deg) brightness(1.05)' },
-      { name: 'B&W', css: 'grayscale(1) contrast(1.1)' },
-      { name: 'Vintage', css: 'sepia(0.5) contrast(0.9) brightness(1.1)' },
-      { name: 'Drama', css: 'contrast(1.4) saturate(1.2) brightness(0.95)' },
-      { name: 'Fade', css: 'contrast(0.8) brightness(1.15) saturate(0.7)' },
-      { name: 'Vivid', css: 'saturate(1.8) contrast(1.1)' },
+      { name: 'Original', css: '', icon: '○' },
+      { name: 'Warm', css: 'sepia(0.3) saturate(1.4) brightness(1.1)', icon: '☀' },
+      { name: 'Cool', css: 'saturate(0.8) hue-rotate(20deg) brightness(1.05)', icon: '❄' },
+      { name: 'B&W', css: 'grayscale(1) contrast(1.1)', icon: '◐' },
+      { name: 'Vintage', css: 'sepia(0.5) contrast(0.9) brightness(1.1)', icon: '📷' },
+      { name: 'Drama', css: 'contrast(1.4) saturate(1.2) brightness(0.95)', icon: '🎭' },
+      { name: 'Fade', css: 'contrast(0.8) brightness(1.15) saturate(0.7)', icon: '🌫' },
+      { name: 'Vivid', css: 'saturate(1.8) contrast(1.1)', icon: '🎨' },
+      { name: 'Film', css: 'sepia(0.2) contrast(1.15) brightness(0.95) saturate(0.85)', icon: '🎬' },
+      { name: 'Noir', css: 'grayscale(0.8) contrast(1.3) brightness(0.9)', icon: '🖤' },
+      { name: 'Pop', css: 'saturate(2.2) contrast(1.05) hue-rotate(-10deg)', icon: '💥' },
+      { name: 'Dreamy', css: 'brightness(1.1) contrast(0.85) saturate(1.2) blur(0.5px)', icon: '💭' },
     ];
-    const STICKERS = ['🔥', '❤️', '😂', '🎉', '💎', '🚀', '⭐', '🎵', '👑', '💰', '🌈', '✨', '🎯', '💪', '🌟', '🎮'];
+    const STICKER_CATEGORIES = [
+      { name: 'Popular', items: ['🔥','❤️','😂','🎉','💎','🚀','⭐','✨','💪','👑','💰','🌈','🎯','🎮','💜','🤩'] },
+      { name: 'Faces', items: ['😍','🥺','😎','🤪','😈','👻','🥳','😤','🫠','💀','🤡','😇','🫶','🤑','😱','🥵'] },
+      { name: 'Objects', items: ['🎵','📸','💐','🎁','🏆','⚡','💫','🌙','🔮','🎪','🎤','💣','🧊','🪩','🫧','🧸'] },
+      { name: 'Nature', items: ['🌸','🌺','🍃','🦋','🌊','🔥','❄️','🌻','🍀','🌴','🌙','⭐','🪻','🌵','🍂','🌏'] },
+      { name: 'Food', items: ['🍕','🍔','🍟','🧁','🍩','🍿','🥤','🍷','🍾','☕','🍜','🍣','🌮','🥑','🍓','🍪'] },
+    ];
     const TEXT_STYLES = [
-      { name: 'Classic', bg: 'rgba(0,0,0,0.6)', color: '#FFF', font: 'inherit' },
-      { name: 'Neon', bg: 'transparent', color: '#0FF', font: 'inherit', shadow: '0 0 10px #0FF,0 0 20px #0FF' },
-      { name: 'Bold', bg: '#FFF', color: '#000', font: 'inherit', weight: '900' },
-      { name: 'Retro', bg: 'linear-gradient(135deg,#f093fb,#f5576c)', color: '#FFF', font: 'inherit' },
-      { name: 'Glitch', bg: 'rgba(255,0,0,0.3)', color: '#0F0', font: 'monospace' },
+      { name: 'Classic', bg: 'rgba(0,0,0,0.65)', color: '#FFF', font: 'system-ui, sans-serif', preview: '#000' },
+      { name: 'Neon', bg: 'transparent', color: '#0FF', font: 'system-ui, sans-serif', shadow: '0 0 10px #0FF,0 0 30px #0FF,0 0 60px #0FF', preview: '#0AA' },
+      { name: 'Bold', bg: '#FFF', color: '#000', font: 'system-ui, sans-serif', weight: '900', preview: '#FFF' },
+      { name: 'Glow', bg: 'transparent', color: '#FFD700', font: 'system-ui, sans-serif', shadow: '0 0 8px #FFD700,0 0 20px #FF8C00', preview: '#FFD700' },
+      { name: 'Retro', bg: 'linear-gradient(135deg,#f093fb,#f5576c)', color: '#FFF', font: 'system-ui, sans-serif', preview: '#f093fb' },
+      { name: 'Matrix', bg: 'rgba(0,20,0,0.7)', color: '#0F0', font: 'monospace', preview: '#0F0' },
+      { name: 'Fire', bg: 'transparent', color: '#FF4500', font: 'system-ui, sans-serif', shadow: '0 0 10px #FF4500,0 0 30px #FF0000', weight: '800', preview: '#FF4500' },
+      { name: 'Ice', bg: 'rgba(200,230,255,0.2)', color: '#B0E0FF', font: 'system-ui, sans-serif', shadow: '0 0 12px rgba(100,200,255,0.5)', preview: '#B0E0FF' },
+      { name: 'Outline', bg: 'transparent', color: '#FFF', font: 'system-ui, sans-serif', stroke: true, weight: '800', preview: '#888' },
+    ];
+    const GRADIENTS = [
+      { name: 'Sunset', css: 'linear-gradient(135deg, #ff6a00, #ee0979)' },
+      { name: 'Ocean', css: 'linear-gradient(135deg, #2193b0, #6dd5ed)' },
+      { name: 'Forest', css: 'linear-gradient(135deg, #134E5E, #71B280)' },
+      { name: 'Purple', css: 'linear-gradient(135deg, #7B2FF7, #C850C0)' },
+      { name: 'Night', css: 'linear-gradient(135deg, #0f0c29, #302b63, #24243e)' },
+      { name: 'Fire', css: 'linear-gradient(135deg, #f12711, #f5af19)' },
+      { name: 'Mint', css: 'linear-gradient(135deg, #00b09b, #96c93d)' },
+      { name: 'Rose', css: 'linear-gradient(135deg, #ee9ca7, #ffdde1)' },
+      { name: 'Dark', css: 'linear-gradient(135deg, #1a1a2e, #16213e, #0f3460)' },
+      { name: 'Candy', css: 'linear-gradient(135deg, #fc5c7d, #6a82fb)' },
+      { name: 'Aurora', css: 'linear-gradient(135deg, #00c6ff, #0072ff, #7209b7)' },
+      { name: 'Peach', css: 'linear-gradient(135deg, #ffecd2, #fcb69f)' },
     ];
 
     const overlay = document.createElement('div');
@@ -3312,29 +3340,32 @@ window.diademUI = {
     overlay.innerHTML = `
       <div class="story-editor">
         <div class="story-editor-header">
-          <button class="story-editor-btn" onclick="this.closest('.story-editor-overlay').remove()"><i class="icon-x"></i></button>
-          <span style="font-weight:700;font-size:16px;">Create Story</span>
-          <button class="story-editor-btn story-editor-publish" id="_se-publish" disabled><i class="icon-send"></i></button>
+          <button class="story-editor-btn" id="_se-close"><i class="icon-x"></i></button>
+          <span style="font-weight:700;font-size:15px;color:#FFF;letter-spacing:-0.01em;">New Story</span>
+          <button class="story-editor-btn story-editor-publish" id="_se-publish" disabled>
+            <i class="icon-send" style="font-size:15px;"></i> Post
+          </button>
         </div>
-        <div class="story-editor-canvas-wrap" id="_se-canvas-wrap">
-          <canvas id="_se-canvas" width="1080" height="1920"></canvas>
-          <div id="_se-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;cursor:pointer;" onclick="document.getElementById('_se-file').click()">
-            <div style="text-align:center;">
-              <i class="icon-image" style="font-size:56px;display:block;margin-bottom:16px;"></i>
-              <span style="font-size:15px;">Tap to add photo or video</span>
+        <div class="story-editor-canvas-area">
+          <div class="story-editor-canvas-wrap" id="_se-canvas-wrap">
+            <canvas id="_se-canvas" width="1080" height="1920"></canvas>
+            <div id="_se-placeholder" class="se-placeholder" onclick="document.getElementById('_se-file').click()">
+              <div class="se-placeholder-icon"><i class="icon-image"></i></div>
+              <div class="se-placeholder-text">Add Photo or Video</div>
+              <div class="se-placeholder-sub">or choose a gradient background below</div>
             </div>
+            <input type="file" id="_se-file" accept="image/*,video/*" style="display:none;">
+            <div id="_se-text-layers" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
+            <div id="_se-sticker-layers" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
           </div>
-          <input type="file" id="_se-file" accept="image/*,video/*" style="display:none;">
-          <div id="_se-text-layers" style="position:absolute;inset:0;pointer-events:none;"></div>
-          <div id="_se-sticker-layers" style="position:absolute;inset:0;pointer-events:none;"></div>
         </div>
         <div class="story-editor-toolbar">
-          <button class="story-tool" data-tool="text" title="Add Text"><i class="icon-type"></i></button>
-          <button class="story-tool" data-tool="sticker" title="Stickers"><i class="icon-smile"></i></button>
-          <button class="story-tool" data-tool="draw" title="Draw"><i class="icon-edit-3"></i></button>
-          <button class="story-tool" data-tool="filter" title="Filters"><i class="icon-sliders"></i></button>
-          <button class="story-tool" data-tool="music" title="Music"><i class="icon-music"></i></button>
-          <button class="story-tool" data-tool="duration" title="Duration"><i class="icon-clock"></i></button>
+          <button class="story-tool" data-tool="bg" data-label="BG"><i class="icon-image"></i></button>
+          <button class="story-tool" data-tool="text" data-label="Text"><i class="icon-type"></i></button>
+          <button class="story-tool" data-tool="sticker" data-label="Sticker"><i class="icon-smile"></i></button>
+          <button class="story-tool" data-tool="draw" data-label="Draw"><i class="icon-edit-3"></i></button>
+          <button class="story-tool" data-tool="filter" data-label="Filter"><i class="icon-sliders"></i></button>
+          <button class="story-tool" data-tool="duration" data-label="Time"><i class="icon-clock"></i></button>
         </div>
         <div class="story-editor-panel" id="_se-panel" style="display:none;"></div>
       </div>
@@ -3350,6 +3381,7 @@ window.diademUI = {
     const stickerLayers = overlay.querySelector('#_se-sticker-layers');
 
     let baseImage = null;
+    let bgGradient = null;
     let currentFilter = 0;
     let textOverlays = [];
     let stickerOverlays = [];
@@ -3357,12 +3389,25 @@ window.diademUI = {
     let isDrawing = false;
     let drawColor = '#FFFFFF';
     let drawWidth = 4;
-    let storyDuration = 24; // hours, 0 = permanent
+    let storyDuration = 24;
+    let activeTool = null;
+
+    function hasContent() { return baseImage || bgGradient || textOverlays.length > 0; }
 
     function redrawCanvas() {
       ctx.clearRect(0, 0, 1080, 1920);
-      ctx.fillStyle = '#111';
-      ctx.fillRect(0, 0, 1080, 1920);
+      // Background
+      if (bgGradient && !baseImage) {
+        // Parse CSS gradient for canvas
+        const grd = ctx.createLinearGradient(0, 0, 1080, 1920);
+        const colors = bgGradient.match(/#[0-9a-fA-F]{6}/g) || ['#111', '#333'];
+        colors.forEach((c, i) => grd.addColorStop(i / (colors.length - 1 || 1), c));
+        ctx.fillStyle = grd;
+        ctx.fillRect(0, 0, 1080, 1920);
+      } else {
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, 1080, 1920);
+      }
       if (baseImage) {
         ctx.filter = FILTERS[currentFilter].css || 'none';
         const scale = Math.max(1080 / baseImage.naturalWidth, 1920 / baseImage.naturalHeight);
@@ -3395,21 +3440,30 @@ window.diademUI = {
         const tx = t.x * 1080;
         const ty = t.y * 1920;
         const metrics = ctx.measureText(t.text);
-        const tw = metrics.width + 40;
-        const th = fontSize + 30;
+        const tw = metrics.width + 60;
+        const th = fontSize + 40;
         if (style.bg && style.bg !== 'transparent') {
           if (style.bg.startsWith('linear')) {
-            ctx.fillStyle = style.color === '#000' ? '#FFF' : 'rgba(0,0,0,0.6)';
+            const bgGrd = ctx.createLinearGradient(tx - tw / 2, ty - th / 2, tx + tw / 2, ty + th / 2);
+            const bgColors = style.bg.match(/#[0-9a-fA-F]{6}/g) || ['#f093fb', '#f5576c'];
+            bgColors.forEach((c, i) => bgGrd.addColorStop(i / (bgColors.length - 1 || 1), c));
+            ctx.fillStyle = bgGrd;
           } else {
             ctx.fillStyle = style.bg;
           }
           ctx.beginPath();
-          ctx.roundRect(tx - tw / 2, ty - th / 2, tw, th, 12);
+          ctx.roundRect(tx - tw / 2, ty - th / 2, tw, th, 16);
           ctx.fill();
         }
         if (style.shadow) {
           ctx.shadowColor = style.color;
-          ctx.shadowBlur = 20;
+          ctx.shadowBlur = 30;
+        }
+        if (style.stroke) {
+          ctx.strokeStyle = '#000';
+          ctx.lineWidth = fontSize * 0.12;
+          ctx.lineJoin = 'round';
+          ctx.strokeText(t.text, tx, ty + fontSize / 3);
         }
         ctx.fillStyle = style.color;
         ctx.fillText(t.text, tx, ty + fontSize / 3);
@@ -3421,53 +3475,79 @@ window.diademUI = {
         ctx.textAlign = 'center';
         ctx.fillText(s.emoji, s.x * 1080, s.y * 1920);
       }
+      // Update publish button
+      publishBtn.disabled = !hasContent();
     }
 
     function updateOverlayElements() {
-      const wrap = overlay.querySelector('#_se-canvas-wrap');
-      const rect = wrap.getBoundingClientRect();
       textLayers.innerHTML = textOverlays.map((t, i) => {
         const style = TEXT_STYLES[t.styleIdx || 0];
-        return `<div class="story-text-overlay" data-idx="${i}" style="left:${t.x * 100}%;top:${t.y * 100}%;transform:translate(-50%,-50%);pointer-events:auto;cursor:grab;
-          background:${style.bg || 'rgba(0,0,0,0.6)'};color:${style.color};font-family:${style.font || 'inherit'};font-weight:${style.weight || '600'};
+        const bgStyle = style.bg === 'transparent' ? 'background:transparent' :
+          (style.bg?.startsWith('linear') ? `background:${style.bg}` : `background:${style.bg || 'rgba(0,0,0,0.6)'}`);
+        return `<div class="story-text-overlay" data-idx="${i}" style="left:${t.x * 100}%;top:${t.y * 100}%;
+          ${bgStyle};color:${style.color};font-family:${style.font || 'inherit'};font-weight:${style.weight || '600'};
           ${style.shadow ? 'text-shadow:' + style.shadow + ';' : ''}
-          padding:6px 14px;border-radius:8px;font-size:${t.size || 16}px;white-space:nowrap;user-select:none;position:absolute;">
+          ${style.stroke ? '-webkit-text-stroke:1px #000;' : ''}
+          font-size:${t.size || 16}px;">
           ${escapeHtml(t.text)}
-          <button style="position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;background:#F00;border:none;color:#FFF;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;" onclick="event.stopPropagation();window._seRemoveText(${i})">×</button>
+          <button class="se-remove-btn" onclick="event.stopPropagation();window._seRemoveText(${i})">×</button>
         </div>`;
       }).join('');
       stickerLayers.innerHTML = stickerOverlays.map((s, i) => {
-        return `<div class="story-sticker-overlay" data-idx="${i}" style="left:${s.x * 100}%;top:${s.y * 100}%;transform:translate(-50%,-50%);pointer-events:auto;cursor:grab;font-size:${s.size || 32}px;position:absolute;user-select:none;">
+        return `<div class="story-sticker-overlay" data-idx="${i}" style="left:${s.x * 100}%;top:${s.y * 100}%;font-size:${s.size || 32}px;">
           ${s.emoji}
-          <button style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:#F00;border:none;color:#FFF;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;" onclick="event.stopPropagation();window._seRemoveSticker(${i})">×</button>
+          <button class="se-remove-btn" onclick="event.stopPropagation();window._seRemoveSticker(${i})">×</button>
         </div>`;
       }).join('');
-      // Make text/sticker draggable
-      textLayers.querySelectorAll('.story-text-overlay').forEach(el => makeDraggable(el, textOverlays, 'text'));
-      stickerLayers.querySelectorAll('.story-sticker-overlay').forEach(el => makeDraggable(el, stickerOverlays, 'sticker'));
+      textLayers.querySelectorAll('.story-text-overlay').forEach(el => makeDraggable(el, textOverlays));
+      stickerLayers.querySelectorAll('.story-sticker-overlay').forEach(el => makeDraggable(el, stickerOverlays));
     }
 
-    function makeDraggable(el, arr, type) {
-      let startX, startY, origX, origY;
+    function makeDraggable(el, arr) {
       const idx = parseInt(el.dataset.idx);
+      let grabOffsetX = 0, grabOffsetY = 0;
       const onMove = (e) => {
         e.preventDefault();
         const wrap = overlay.querySelector('#_se-canvas-wrap');
         const rect = wrap.getBoundingClientRect();
         const cx = (e.touches ? e.touches[0].clientX : e.clientX);
         const cy = (e.touches ? e.touches[0].clientY : e.clientY);
-        arr[idx].x = Math.max(0.05, Math.min(0.95, (cx - rect.left) / rect.width));
-        arr[idx].y = Math.max(0.05, Math.min(0.95, (cy - rect.top) / rect.height));
+        const newX = (cx - rect.left) / rect.width + grabOffsetX;
+        const newY = (cy - rect.top) / rect.height + grabOffsetY;
+        arr[idx].x = Math.max(0.02, Math.min(0.98, newX));
+        arr[idx].y = Math.max(0.02, Math.min(0.98, newY));
         el.style.left = arr[idx].x * 100 + '%';
         el.style.top = arr[idx].y * 100 + '%';
       };
       const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onUp); redrawCanvas(); };
-      el.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; e.preventDefault(); document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); });
-      el.addEventListener('touchstart', (e) => { if (e.target.tagName === 'BUTTON') return; document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onUp); });
+      const startDrag = (e) => {
+        if (e.target.tagName === 'BUTTON') return;
+        e.preventDefault();
+        const wrap = overlay.querySelector('#_se-canvas-wrap');
+        const rect = wrap.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+        const cursorX = (cx - rect.left) / rect.width;
+        const cursorY = (cy - rect.top) / rect.height;
+        grabOffsetX = arr[idx].x - cursorX;
+        grabOffsetY = arr[idx].y - cursorY;
+        document.addEventListener('mousemove', onMove);
+        document.addEventListener('mouseup', onUp);
+        document.addEventListener('touchmove', onMove, { passive: false });
+        document.addEventListener('touchend', onUp);
+      };
+      el.addEventListener('mousedown', startDrag);
+      el.addEventListener('touchstart', startDrag, { passive: false });
     }
 
     window._seRemoveText = (i) => { textOverlays.splice(i, 1); updateOverlayElements(); redrawCanvas(); };
     window._seRemoveSticker = (i) => { stickerOverlays.splice(i, 1); updateOverlayElements(); redrawCanvas(); };
+
+    // Close button
+    overlay.querySelector('#_se-close').addEventListener('click', () => {
+      if (hasContent()) { if (!confirm('Discard this story?')) return; }
+      overlay.remove();
+    });
 
     // File input
     overlay.querySelector('#_se-file').addEventListener('change', (e) => {
@@ -3478,167 +3558,250 @@ window.diademUI = {
         video.src = URL.createObjectURL(file);
         video.muted = true;
         video.addEventListener('loadeddata', () => {
-          video.currentTime = 0;
+          video.currentTime = 1;
           video.addEventListener('seeked', () => {
             const tmpCanvas = document.createElement('canvas');
             tmpCanvas.width = video.videoWidth;
             tmpCanvas.height = video.videoHeight;
             tmpCanvas.getContext('2d').drawImage(video, 0, 0);
             const img = new Image();
-            img.onload = () => { baseImage = img; placeholder.style.display = 'none'; publishBtn.disabled = false; redrawCanvas(); };
+            img.onload = () => { baseImage = img; bgGradient = null; placeholder.style.display = 'none'; redrawCanvas(); };
             img.src = tmpCanvas.toDataURL('image/jpeg', 0.85);
+            URL.revokeObjectURL(video.src);
           }, { once: true });
         });
       } else {
-        const img = new Image();
-        img.onload = () => { baseImage = img; placeholder.style.display = 'none'; publishBtn.disabled = false; redrawCanvas(); };
-        img.src = URL.createObjectURL(file);
+        const reader = new FileReader();
+        reader.onload = () => {
+          const img = new Image();
+          img.onload = () => { baseImage = img; bgGradient = null; placeholder.style.display = 'none'; redrawCanvas(); };
+          img.src = reader.result;
+        };
+        reader.readAsDataURL(file);
       }
     });
+
+    // Drawing state management
+    let drawHandlerAttached = false;
+    function attachDrawHandlers() {
+      if (drawHandlerAttached) return;
+      drawHandlerAttached = true;
+      const wrap = overlay.querySelector('#_se-canvas-wrap');
+      const drawHandler = (e) => {
+        if (activeTool !== 'draw') return;
+        const rect = wrap.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+        const nx = cx / rect.width;
+        const ny = cy / rect.height;
+        if (e.type === 'mousedown' || e.type === 'touchstart') {
+          isDrawing = true;
+          drawingData.push({ color: drawColor, width: drawWidth, points: [{ x: nx, y: ny }] });
+        } else if (isDrawing && (e.type === 'mousemove' || e.type === 'touchmove')) {
+          e.preventDefault();
+          drawingData[drawingData.length - 1].points.push({ x: nx, y: ny });
+          redrawCanvas();
+        } else if (e.type === 'mouseup' || e.type === 'touchend') {
+          isDrawing = false;
+        }
+      };
+      wrap.addEventListener('mousedown', drawHandler);
+      wrap.addEventListener('mousemove', drawHandler);
+      wrap.addEventListener('mouseup', drawHandler);
+      wrap.addEventListener('touchstart', drawHandler, { passive: false });
+      wrap.addEventListener('touchmove', drawHandler, { passive: false });
+      wrap.addEventListener('touchend', drawHandler);
+    }
 
     // Tool buttons
     overlay.querySelectorAll('.story-tool').forEach(btn => {
       btn.addEventListener('click', () => {
         const tool = btn.dataset.tool;
+        const wasActive = btn.classList.contains('active');
         overlay.querySelectorAll('.story-tool').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
 
-        if (tool === 'text') {
+        if (wasActive) { panel.style.display = 'none'; activeTool = null; return; }
+        btn.classList.add('active');
+        activeTool = tool;
+
+        if (tool === 'bg') {
           panel.style.display = 'block';
           panel.innerHTML = `
-            <div style="padding:12px;">
-              <input id="_se-text-input" class="form-input" placeholder="Enter text..." style="width:100%;box-sizing:border-box;margin-bottom:8px;">
-              <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
-                ${TEXT_STYLES.map((s, i) => `<button class="story-style-btn${i === 0 ? ' active' : ''}" data-style="${i}" style="background:${s.bg || '#333'};color:${s.color};border:2px solid ${i === 0 ? 'var(--btn-primary-bg)' : 'transparent'};border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;font-weight:${s.weight || '600'};">${s.name}</button>`).join('')}
+            <div style="padding:14px 16px;">
+              <div class="se-panel-title">Background</div>
+              <div style="display:flex;gap:8px;margin-bottom:14px;">
+                <button class="btn" id="_se-bg-photo" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#FFF;border-radius:12px;padding:10px;font-size:13px;cursor:pointer;">
+                  <i class="icon-image" style="margin-right:6px;"></i> Photo
+                </button>
+                <button class="btn" id="_se-bg-camera" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#FFF;border-radius:12px;padding:10px;font-size:13px;cursor:pointer;">
+                  <i class="icon-camera" style="margin-right:6px;"></i> Camera
+                </button>
               </div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <span style="font-size:12px;color:var(--text-muted);">Size</span>
-                <input type="range" id="_se-text-size" min="12" max="48" value="20" style="flex:1;accent-color:var(--btn-primary-bg);">
-                <button class="btn btn-primary" style="border-radius:8px;height:32px;font-size:12px;" id="_se-add-text">Add</button>
+              <div class="se-panel-title">Gradients</div>
+              <div class="se-gradient-grid">
+                ${GRADIENTS.map((g, i) => `<div class="se-bg-option${bgGradient === g.css ? ' active' : ''}" data-idx="${i}" style="background:${g.css};" title="${g.name}"></div>`).join('')}
+              </div>
+            </div>`;
+          panel.querySelector('#_se-bg-photo').addEventListener('click', () => overlay.querySelector('#_se-file').click());
+          panel.querySelectorAll('.se-bg-option').forEach(el => {
+            el.addEventListener('click', () => {
+              const i = parseInt(el.dataset.idx);
+              bgGradient = GRADIENTS[i].css;
+              baseImage = null;
+              placeholder.style.display = 'none';
+              panel.querySelectorAll('.se-bg-option').forEach(x => x.classList.remove('active'));
+              el.classList.add('active');
+              redrawCanvas();
+            });
+          });
+        } else if (tool === 'text') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:14px 16px;">
+              <div style="display:flex;gap:8px;margin-bottom:12px;">
+                <input id="_se-text-input" placeholder="Type something..." style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:10px 14px;color:#FFF;font-size:14px;outline:none;" autofocus>
+                <button id="_se-add-text" style="background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;color:#FFF;border-radius:12px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Add</button>
+              </div>
+              <div class="se-panel-title">Style</div>
+              <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none;">
+                ${TEXT_STYLES.map((s, i) => `<div class="se-style-chip${i === 0 ? ' active' : ''}" data-style="${i}" style="background:${s.bg === 'transparent' ? 'rgba(255,255,255,0.06)' : (s.bg?.startsWith('linear') ? s.bg : s.bg)};color:${s.color};font-weight:${s.weight || '600'};${s.shadow ? 'text-shadow:' + s.shadow + ';' : ''}${s.stroke ? '-webkit-text-stroke:0.5px #000;' : ''}">${s.name}</div>`).join('')}
+              </div>
+              <div style="display:flex;gap:10px;align-items:center;margin-top:4px;">
+                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">Size</span>
+                <input type="range" id="_se-text-size" min="14" max="56" value="22" style="flex:1;accent-color:#6366F1;height:4px;">
+                <span id="_se-text-size-val" style="font-size:11px;color:rgba(255,255,255,0.4);min-width:24px;text-align:right;">22</span>
               </div>
             </div>`;
           let selStyle = 0;
-          panel.querySelectorAll('.story-style-btn').forEach(sb => {
+          const sizeSlider = panel.querySelector('#_se-text-size');
+          const sizeVal = panel.querySelector('#_se-text-size-val');
+          sizeSlider.addEventListener('input', () => { sizeVal.textContent = sizeSlider.value; });
+          panel.querySelectorAll('.se-style-chip').forEach(sb => {
             sb.addEventListener('click', () => {
-              panel.querySelectorAll('.story-style-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              panel.querySelectorAll('.se-style-chip').forEach(x => x.classList.remove('active'));
               sb.classList.add('active');
-              sb.style.borderColor = 'var(--btn-primary-bg)';
               selStyle = parseInt(sb.dataset.style);
             });
           });
-          panel.querySelector('#_se-add-text').addEventListener('click', () => {
+          const addText = () => {
             const val = panel.querySelector('#_se-text-input').value.trim();
             if (!val) return;
-            const size = parseInt(panel.querySelector('#_se-text-size').value);
-            textOverlays.push({ text: val, x: 0.5, y: 0.5, styleIdx: selStyle, size });
+            const size = parseInt(sizeSlider.value);
+            textOverlays.push({ text: val, x: 0.5, y: 0.3 + Math.random() * 0.4, styleIdx: selStyle, size });
             updateOverlayElements();
             redrawCanvas();
             panel.querySelector('#_se-text-input').value = '';
-          });
+          };
+          panel.querySelector('#_se-add-text').addEventListener('click', addText);
+          panel.querySelector('#_se-text-input').addEventListener('keydown', (e) => { if (e.key === 'Enter') addText(); });
         } else if (tool === 'sticker') {
+          let activeCategory = 0;
           panel.style.display = 'block';
-          panel.innerHTML = `
-            <div style="padding:12px;display:grid;grid-template-columns:repeat(8,1fr);gap:6px;">
-              ${STICKERS.map(s => `<button style="font-size:28px;background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;transition:background 0.15s;" onmouseover="this.style.background='var(--bg-active)'" onmouseout="this.style.background='none'" onclick="window._seAddSticker('${s}')">${s}</button>`).join('')}
-            </div>`;
+          const renderStickerPanel = () => {
+            panel.innerHTML = `
+              <div style="padding:14px 16px;">
+                <div style="display:flex;gap:6px;margin-bottom:10px;overflow-x:auto;scrollbar-width:none;">
+                  ${STICKER_CATEGORIES.map((c, i) => `<button style="padding:5px 12px;border-radius:16px;font-size:11px;font-weight:${i === activeCategory ? '600' : '400'};border:none;cursor:pointer;white-space:nowrap;background:${i === activeCategory ? 'rgba(99,102,241,0.2)' : 'rgba(255,255,255,0.06)'};color:${i === activeCategory ? '#818CF8' : 'rgba(255,255,255,0.5)'};" onclick="window._seStickerCat(${i})">${c.name}</button>`).join('')}
+                </div>
+                <div style="display:grid;grid-template-columns:repeat(8,1fr);gap:2px;">
+                  ${STICKER_CATEGORIES[activeCategory].items.map(s => `<button class="se-sticker-btn" onclick="window._seAddSticker('${s}')">${s}</button>`).join('')}
+                </div>
+              </div>`;
+          };
+          renderStickerPanel();
+          window._seStickerCat = (i) => { activeCategory = i; renderStickerPanel(); };
           window._seAddSticker = (emoji) => {
             stickerOverlays.push({ emoji, x: 0.3 + Math.random() * 0.4, y: 0.3 + Math.random() * 0.4, size: 48 });
             updateOverlayElements();
             redrawCanvas();
           };
         } else if (tool === 'draw') {
+          attachDrawHandlers();
           panel.style.display = 'block';
+          const DRAW_COLORS = ['#FFFFFF','#FF3B30','#34C759','#007AFF','#FFD60A','#FF2D55','#5856D6','#FF9500','#00C7BE','#BF5AF2'];
           panel.innerHTML = `
-            <div style="padding:12px;">
-              <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
-                <span style="font-size:12px;color:var(--text-muted);">Color</span>
-                ${['#FFFFFF','#FF0000','#00FF00','#0088FF','#FFD700','#FF00FF','#00FFFF','#FF8C00'].map(c => `<button style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === drawColor ? '#FFF' : 'transparent'};cursor:pointer;" onclick="window._seDrawColor='${c}';this.parentElement.querySelectorAll('button').forEach(b=>b.style.borderColor='transparent');this.style.borderColor='#FFF'"></button>`).join('')}
+            <div style="padding:14px 16px;">
+              <div class="se-panel-title">Color</div>
+              <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
+                ${DRAW_COLORS.map(c => `<div class="se-color-dot${c === drawColor ? ' active' : ''}" data-color="${c}" style="background:${c};"></div>`).join('')}
               </div>
-              <div style="display:flex;gap:8px;align-items:center;">
-                <span style="font-size:12px;color:var(--text-muted);">Size</span>
-                <input type="range" min="2" max="20" value="${drawWidth}" style="flex:1;accent-color:var(--btn-primary-bg);" oninput="window._seDrawWidth=parseInt(this.value)">
-                <button class="btn btn-outline" style="border-radius:8px;height:28px;font-size:11px;" onclick="window._seDrawData=[];window._seRedraw()">Clear</button>
+              <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
+                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">Size</span>
+                <input type="range" min="1" max="24" value="${drawWidth}" style="flex:1;accent-color:#6366F1;height:4px;" id="_se-draw-size">
+                <div id="_se-draw-preview" style="width:${drawWidth * 2}px;height:${drawWidth * 2}px;border-radius:50%;background:${drawColor};transition:all 0.15s;flex-shrink:0;"></div>
               </div>
-              <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Draw on the canvas above</div>
+              <div style="display:flex;gap:8px;">
+                <button id="_se-draw-undo" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-rotate-ccw" style="margin-right:4px;font-size:12px;"></i> Undo</button>
+                <button id="_se-draw-clear" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#EF4444;border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-trash-2" style="margin-right:4px;font-size:12px;"></i> Clear</button>
+              </div>
             </div>`;
-          window._seDrawColor = drawColor;
-          window._seDrawWidth = drawWidth;
-          window._seDrawData = drawingData;
-          window._seRedraw = () => { drawingData = window._seDrawData; redrawCanvas(); };
-
-          // Enable drawing on canvas wrap
-          const wrap = overlay.querySelector('#_se-canvas-wrap');
-          const drawHandler = (e) => {
-            if (!btn.classList.contains('active')) return;
-            const rect = wrap.getBoundingClientRect();
-            const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
-            const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
-            const nx = cx / rect.width;
-            const ny = cy / rect.height;
-            if (e.type === 'mousedown' || e.type === 'touchstart') {
-              isDrawing = true;
-              drawingData.push({ color: window._seDrawColor, width: window._seDrawWidth, points: [{ x: nx, y: ny }] });
-            } else if (isDrawing && (e.type === 'mousemove' || e.type === 'touchmove')) {
-              e.preventDefault();
-              drawingData[drawingData.length - 1].points.push({ x: nx, y: ny });
-              redrawCanvas();
-            } else if (e.type === 'mouseup' || e.type === 'touchend') {
-              isDrawing = false;
-            }
-          };
-          wrap.addEventListener('mousedown', drawHandler);
-          wrap.addEventListener('mousemove', drawHandler);
-          wrap.addEventListener('mouseup', drawHandler);
-          wrap.addEventListener('touchstart', drawHandler);
-          wrap.addEventListener('touchmove', drawHandler, { passive: false });
-          wrap.addEventListener('touchend', drawHandler);
+          const sizeInput = panel.querySelector('#_se-draw-size');
+          const preview = panel.querySelector('#_se-draw-preview');
+          sizeInput.addEventListener('input', () => { drawWidth = parseInt(sizeInput.value); preview.style.width = preview.style.height = drawWidth * 2 + 'px'; });
+          panel.querySelectorAll('.se-color-dot').forEach(dot => {
+            dot.addEventListener('click', () => {
+              drawColor = dot.dataset.color;
+              panel.querySelectorAll('.se-color-dot').forEach(d => d.classList.remove('active'));
+              dot.classList.add('active');
+              preview.style.background = drawColor;
+            });
+          });
+          panel.querySelector('#_se-draw-undo').addEventListener('click', () => { if (drawingData.length) { drawingData.pop(); redrawCanvas(); } });
+          panel.querySelector('#_se-draw-clear').addEventListener('click', () => { drawingData = []; redrawCanvas(); });
         } else if (tool === 'filter') {
           panel.style.display = 'block';
+          // Generate tiny preview thumbnails
+          const thumbSrc = baseImage ? (() => {
+            const tc = document.createElement('canvas'); tc.width = 72; tc.height = 96;
+            const tCtx = tc.getContext('2d');
+            const s = Math.max(72 / baseImage.naturalWidth, 96 / baseImage.naturalHeight);
+            tCtx.drawImage(baseImage, (72 - baseImage.naturalWidth * s) / 2, (96 - baseImage.naturalHeight * s) / 2, baseImage.naturalWidth * s, baseImage.naturalHeight * s);
+            return tc.toDataURL('image/jpeg', 0.5);
+          })() : null;
+
           panel.innerHTML = `
-            <div style="padding:12px;display:flex;gap:8px;overflow-x:auto;">
-              ${FILTERS.map((f, i) => `<button class="story-filter-btn${i === currentFilter ? ' active' : ''}" style="flex-shrink:0;padding:8px 14px;border-radius:8px;border:2px solid ${i === currentFilter ? 'var(--btn-primary-bg)' : 'transparent'};background:var(--bg-secondary);color:var(--text-primary);font-size:12px;cursor:pointer;" data-filter="${i}">${f.name}</button>`).join('')}
+            <div style="padding:14px 16px;">
+              <div class="se-panel-title">Filters</div>
+              <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;">
+                ${FILTERS.map((f, i) => `<div class="se-filter-card${i === currentFilter ? ' active' : ''}" data-filter="${i}">
+                  ${thumbSrc ? `<img src="${thumbSrc}" style="filter:${f.css || 'none'};">` : `<div style="width:72px;height:80px;display:flex;align-items:center;justify-content:center;font-size:24px;filter:${f.css || 'none'};">${f.icon}</div>`}
+                  <span>${f.name}</span>
+                </div>`).join('')}
+              </div>
             </div>`;
-          panel.querySelectorAll('.story-filter-btn').forEach(fb => {
+          panel.querySelectorAll('.se-filter-card').forEach(fb => {
             fb.addEventListener('click', () => {
               currentFilter = parseInt(fb.dataset.filter);
-              panel.querySelectorAll('.story-filter-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              panel.querySelectorAll('.se-filter-card').forEach(x => x.classList.remove('active'));
               fb.classList.add('active');
-              fb.style.borderColor = 'var(--btn-primary-bg)';
               redrawCanvas();
             });
           });
-        } else if (tool === 'music') {
-          panel.style.display = 'block';
-          panel.innerHTML = `
-            <div style="padding:12px;">
-              <div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px;">
-                <i class="icon-music" style="font-size:24px;display:block;margin-bottom:8px;"></i>
-                Music will be available in future updates.<br>Stories are stored on blockchain.
-              </div>
-            </div>`;
         } else if (tool === 'duration') {
           panel.style.display = 'block';
           const durations = [
-            { label: '6 hours', value: 6 },
-            { label: '12 hours', value: 12 },
-            { label: '24 hours', value: 24 },
-            { label: '48 hours', value: 48 },
-            { label: '7 days', value: 168 },
-            { label: 'Permanent', value: 0 },
+            { label: '6h', value: 6, desc: '6 hours' },
+            { label: '12h', value: 12, desc: '12 hours' },
+            { label: '24h', value: 24, desc: '1 day' },
+            { label: '48h', value: 48, desc: '2 days' },
+            { label: '7d', value: 168, desc: '1 week' },
+            { label: '∞', value: 0, desc: 'Permanent' },
           ];
           panel.innerHTML = `
-            <div style="padding:12px;">
-              <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Story Duration</div>
-              <div style="display:flex;flex-wrap:wrap;gap:6px;">
-                ${durations.map(d => `<button class="story-duration-btn${d.value === storyDuration ? ' active' : ''}" data-dur="${d.value}" style="padding:8px 14px;border-radius:8px;border:2px solid ${d.value === storyDuration ? 'var(--btn-primary-bg)' : 'transparent'};background:var(--bg-secondary);color:var(--text-primary);font-size:12px;cursor:pointer;">${d.label}</button>`).join('')}
+            <div style="padding:14px 16px;">
+              <div class="se-panel-title">Story Duration</div>
+              <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                ${durations.map(d => `<div class="se-duration-chip${d.value === storyDuration ? ' active' : ''}" data-dur="${d.value}">
+                  <div style="font-size:16px;font-weight:700;">${d.label}</div>
+                  <div style="font-size:10px;opacity:0.6;margin-top:1px;">${d.desc}</div>
+                </div>`).join('')}
               </div>
             </div>`;
-          panel.querySelectorAll('.story-duration-btn').forEach(db => {
+          panel.querySelectorAll('.se-duration-chip').forEach(db => {
             db.addEventListener('click', () => {
               storyDuration = parseInt(db.dataset.dur);
-              panel.querySelectorAll('.story-duration-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              panel.querySelectorAll('.se-duration-chip').forEach(x => x.classList.remove('active'));
               db.classList.add('active');
-              db.style.borderColor = 'var(--btn-primary-bg)';
             });
           });
         }
@@ -3647,28 +3810,34 @@ window.diademUI = {
 
     // Publish
     publishBtn.addEventListener('click', async () => {
-      if (!baseImage) return;
+      if (!hasContent()) return;
       publishBtn.disabled = true;
+      publishBtn.innerHTML = '<i class="icon-loader" style="font-size:14px;animation:spin 1s linear infinite;"></i> ...';
       redrawCanvas();
-      const finalImage = canvas.toDataURL('image/jpeg', 0.8);
+      const finalImage = canvas.toDataURL('image/jpeg', 0.82);
       const textData = textOverlays.map(t => ({ text: t.text, x: t.x, y: t.y, styleIdx: t.styleIdx, size: t.size }));
       try {
         await node.createStory({ image: finalImage, text: textData.length > 0 ? textData[0].text : '', textStyle: { overlays: textData, stickers: stickerOverlays, filter: currentFilter }, duration: storyDuration });
         showToast('Story published!', 'success');
         overlay.remove();
         renderFeed();
-      } catch (err) { showToast(err.message, 'error'); publishBtn.disabled = false; }
+      } catch (err) {
+        showToast(err.message, 'error');
+        publishBtn.disabled = false;
+        publishBtn.innerHTML = '<i class="icon-send" style="font-size:15px;"></i> Post';
+      }
     });
 
-    // Cleanup global refs on close
+    // Close on overlay click
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
-        delete window._seRemoveText;
-        delete window._seRemoveSticker;
-        delete window._seAddSticker;
+        if (hasContent()) { if (!confirm('Discard this story?')) return; }
         overlay.remove();
       }
     });
+
+    // Initial canvas draw
+    redrawCanvas();
   },
 
   hideStory(address, storyId) {
@@ -3697,19 +3866,25 @@ window.diademUI = {
     if (!userStory || userStory.stories.length === 0) return;
 
     let currentIdx = 0;
+    let paused = false;
     const stories = userStory.stories;
     const profile = userStory.profile || {};
     const sName = profile.name || address.slice(0, 10);
+    const isOwn = address === node.wallet?.address;
 
     const overlay = document.createElement('div');
     overlay.className = 'story-viewer-overlay';
 
     function renderCurrentStory() {
       const s = stories[currentIdx];
+      if (!s) { overlay.remove(); return; }
       const timeAgo = formatTimeAgo(s.timestamp);
       const sAvatar = profile.avatar
-        ? `<img src="${profile.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
-        : `<div style="width:32px;height:32px;border-radius:50%;background:#333;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#FFF;">${sName[0]?.toUpperCase() || '?'}</div>`;
+        ? `<img src="${profile.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;border:2px solid rgba(255,255,255,0.2);">`
+        : `<div style="width:36px;height:36px;border-radius:50%;background:linear-gradient(135deg,#6366F1,#8B5CF6);display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:700;color:#FFF;">${sName[0]?.toUpperCase() || '?'}</div>`;
+
+      // Mark as viewed
+      if (s.views && node.wallet) s.views.add(node.wallet.address);
 
       overlay.innerHTML = `
         <div class="story-viewer">
@@ -3717,19 +3892,26 @@ window.diademUI = {
             ${stories.map((_, i) => `<div class="story-progress-segment${i < currentIdx ? ' story-progress-done' : (i === currentIdx ? ' story-progress-active' : '')}"></div>`).join('')}
           </div>
           <div class="story-viewer-header">
-            <div style="display:flex;align-items:center;gap:10px;">
+            <div style="display:flex;align-items:center;gap:10px;cursor:pointer;" onclick="window.diademUI.navigateTo('#profile/${address}');this.closest('.story-viewer-overlay').remove()">
               ${sAvatar}
               <div>
-                <div style="font-size:13px;font-weight:600;color:#FFF;">${escapeHtml(sName)}</div>
-                <div style="font-size:11px;color:rgba(255,255,255,0.6);">${timeAgo}</div>
+                <div style="font-size:14px;font-weight:600;color:#FFF;">${escapeHtml(sName)}</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.5);">${timeAgo}</div>
               </div>
             </div>
-            <button style="background:none;border:none;color:#FFF;font-size:24px;cursor:pointer;padding:4px;" onclick="this.closest('.story-viewer-overlay').remove()"><i class="icon-x"></i></button>
+            <div style="display:flex;align-items:center;gap:6px;">
+              ${isOwn ? `<button style="background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border:none;color:rgba(255,255,255,0.7);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}');this.closest('.story-viewer-overlay').remove()" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
+              <button style="background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border:none;color:#FFF;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;" onclick="this.closest('.story-viewer-overlay').remove()"><i class="icon-x"></i></button>
+            </div>
           </div>
           <img src="${s.image}" class="story-viewer-image">
+          <div class="story-viewer-gradient"></div>
           ${s.text ? `<div class="story-viewer-text">${escapeHtml(s.text)}</div>` : ''}
           <div class="story-nav-left" onclick="event.stopPropagation()"></div>
           <div class="story-nav-right" onclick="event.stopPropagation()"></div>
+          ${isOwn && s.views ? `<div style="position:absolute;bottom:14px;left:16px;z-index:5;display:flex;align-items:center;gap:6px;color:rgba(255,255,255,0.5);font-size:12px;">
+            <i class="icon-eye" style="font-size:14px;"></i> ${s.views.size}
+          </div>` : ''}
         </div>
       `;
 
@@ -3739,12 +3921,25 @@ window.diademUI = {
       });
       overlay.querySelector('.story-nav-right').addEventListener('click', () => {
         if (currentIdx < stories.length - 1) { currentIdx++; renderCurrentStory(); }
-        else { overlay.remove(); }
+        else { clearTimeout(overlay._timer); overlay.remove(); }
       });
 
-      // Auto-advance after 5s
+      // Pause on hold
+      const viewer = overlay.querySelector('.story-viewer');
+      let holdTimer;
+      viewer.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I' || e.target.tagName === 'INPUT') return; holdTimer = setTimeout(() => { paused = true; clearTimeout(overlay._timer); }, 200); });
+      viewer.addEventListener('mouseup', () => { clearTimeout(holdTimer); if (paused) { paused = false; scheduleAdvance(); } });
+      viewer.addEventListener('touchstart', (e) => { if (e.target.tagName === 'BUTTON' || e.target.tagName === 'I') return; holdTimer = setTimeout(() => { paused = true; clearTimeout(overlay._timer); }, 200); }, { passive: true });
+      viewer.addEventListener('touchend', () => { clearTimeout(holdTimer); if (paused) { paused = false; scheduleAdvance(); } });
+
+      // Auto-advance
+      scheduleAdvance();
+    }
+
+    function scheduleAdvance() {
       clearTimeout(overlay._timer);
       overlay._timer = setTimeout(() => {
+        if (paused) return;
         if (currentIdx < stories.length - 1) { currentIdx++; renderCurrentStory(); }
         else { overlay.remove(); }
       }, 5000);
@@ -3752,9 +3947,20 @@ window.diademUI = {
 
     renderCurrentStory();
     document.body.appendChild(overlay);
+
+    // Keyboard nav
+    const keyHandler = (e) => {
+      if (e.key === 'ArrowLeft' && currentIdx > 0) { currentIdx--; renderCurrentStory(); }
+      else if (e.key === 'ArrowRight' || e.key === ' ') { if (currentIdx < stories.length - 1) { currentIdx++; renderCurrentStory(); } else { overlay.remove(); } }
+      else if (e.key === 'Escape') { overlay.remove(); }
+    };
+    document.addEventListener('keydown', keyHandler);
     overlay.addEventListener('click', (e) => {
-      if (e.target === overlay) { clearTimeout(overlay._timer); overlay.remove(); }
+      if (e.target === overlay) { clearTimeout(overlay._timer); document.removeEventListener('keydown', keyHandler); overlay.remove(); }
     });
+    // Cleanup keyboard handler when removed
+    const obs = new MutationObserver(() => { if (!document.contains(overlay)) { document.removeEventListener('keydown', keyHandler); clearTimeout(overlay._timer); obs.disconnect(); } });
+    obs.observe(document.body, { childList: true });
   },
 
   // Expose toast/confirm for inline onclick handlers

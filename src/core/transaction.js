@@ -62,7 +62,7 @@ export class Transaction {
 
   /** Compute transaction hash */
   async computeHash() {
-    return sha256(this.getSignPayload() + (this.signature || ''));
+    return sha256(this.getSignPayload());
   }
 
   /** Sign this transaction with a private key */

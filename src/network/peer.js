@@ -98,6 +98,11 @@ export class PeerNetwork {
       buf.received++;
       this._chunkBuffers.set(msg.id, buf);
       if (buf.received === msg.total) {
+        // Validate all parts are present before joining
+        if (buf.parts.some(p => p === undefined || p === null)) {
+          this._chunkBuffers.delete(msg.id);
+          return;
+        }
         this._chunkBuffers.delete(msg.id);
         try {
           const fullMsg = JSON.parse(buf.parts.join(''));

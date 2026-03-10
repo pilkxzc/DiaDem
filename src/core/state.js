@@ -101,7 +101,7 @@ export class WorldState {
   /** Add reputation points */
   _addReputation(address, points, field) {
     const rep = this.getReputation(address);
-    rep.score += points;
+    rep.score = Math.max(0, rep.score + points);
     if (field) rep[field] = (rep[field] || 0) + 1;
     // Calculate level
     const s = rep.score;
@@ -428,6 +428,8 @@ export class WorldState {
     }
     // Remove likes for this post
     this.likes.delete(postId);
+    // Clean up orphaned reactions
+    this.reactions.delete(postId);
     this._recordTx(tx.from, tx);
     return true;
   }
