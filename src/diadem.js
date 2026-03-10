@@ -21,7 +21,7 @@
  * 5. Block propagates to all peers → state updates
  */
 
-import { generateKeyPair, sign, generateSeedPhrase } from './crypto/keys.js';
+import { generateKeyPair, sign, generateSeedPhrase, deriveKeyFromSeed, validateSeedPhrase, generateAccessKey, parseAccessKey } from './crypto/keys.js';
 import { Blockchain } from './core/blockchain.js';
 import { Transaction, TX_TYPES, createTransfer, createPost, createStake,
          createFollow, createLike, createProfileUpdate, createVote } from './core/transaction.js';
@@ -128,6 +128,8 @@ export class DiaDemNode {
         this.emit('stateChange');
       },
     });
+    // Link signaling to peer network for WS relay fallback
+    this.network.signalingClient = this.signaling;
     // Connect to signaling server (non-blocking, auto-reconnects)
     this.signaling.connect();
 
@@ -178,21 +180,6 @@ export class DiaDemNode {
     this.blockchain = new Blockchain();
     await this.blockchain.init(this.wallet.address);
 
-    // Store profile in CAS
-    if (name) {
-      const profileHash = await this.cas.putProfile({
-        address: this.wallet.address,
-        name,
-        handle: '@' + name.toLowerCase().replace(/\s+/g, '_'),
-      });
-      // Update profile via transaction
-      await this.updateProfile({
-        name,
-        handle: '@' + name.toLowerCase().replace(/\s+/g, '_'),
-        profileHash,
-      });
-    }
-
     // Reconnect network, protocol, signaling, IPFS, consensus
     if (this.signaling) this.signaling.disconnect();
     this.network = new PeerNetwork(this.wallet.address);
@@ -216,6 +203,7 @@ export class DiaDemNode {
         this.emit('stateChange');
       },
     });
+    this.network.signalingClient = this.signaling;
     this.signaling.connect();
 
     this.blockchain.onBlock(async (block) => {
@@ -232,6 +220,21 @@ export class DiaDemNode {
 
     // Claim faucet DDM for new wallet
     await this.blockchain.claimFaucet(this.wallet);
+
+    // Store profile name (must be after claimFaucet so balance > 0 for PROFILE_UPDATE_FEE)
+    if (name) {
+      const profileHash = await this.cas.putProfile({
+        address: this.wallet.address,
+        name,
+        handle: '@' + name.toLowerCase().replace(/\s+/g, '_'),
+      });
+      await this.updateProfile({
+        name,
+        handle: '@' + name.toLowerCase().replace(/\s+/g, '_'),
+        profileHash,
+      });
+    }
+
     this._saveState();
 
     // Announce to other tabs
@@ -243,10 +246,104 @@ export class DiaDemNode {
     return this.wallet;
   }
 
+  /** Import wallet from seed phrase */
+  async importFromSeed(seedPhrase) {
+    const phrase = Array.isArray(seedPhrase) ? seedPhrase : seedPhrase.trim().split(/\s+/);
+    if (!validateSeedPhrase(phrase)) throw new Error('Invalid seed phrase (must be 12 valid words)');
+
+    const keys = await deriveKeyFromSeed(phrase);
+    this.wallet = {
+      address: keys.address,
+      publicKey: keys.publicKey,
+      privateKey: keys.privateKey,
+      seedPhrase: phrase,
+      createdAt: Date.now(),
+    };
+    KeyStore.saveWallet(this.wallet);
+    await this._reinitAfterImport();
+    return this.wallet;
+  }
+
+  /** Import wallet from access key */
+  async importFromAccessKey(accessKey) {
+    const data = parseAccessKey(accessKey);
+    if (!data) throw new Error('Invalid access key');
+
+    this.wallet = {
+      address: data.address,
+      publicKey: data.publicKey,
+      privateKey: data.privateKey,
+      seedPhrase: data.seedPhrase || [],
+      createdAt: data.createdAt || Date.now(),
+    };
+    KeyStore.saveWallet(this.wallet);
+    await this._reinitAfterImport();
+    return this.wallet;
+  }
+
+  /** Get access key for current wallet */
+  async getAccessKey() {
+    this._requireWallet();
+    return generateAccessKey(this.wallet);
+  }
+
+  /** Get seed phrase for current wallet */
+  getSeedPhrase() {
+    this._requireWallet();
+    return this.wallet.seedPhrase || [];
+  }
+
+  /** Reinitialize node after wallet import (shared by importFromSeed and importFromAccessKey) */
+  async _reinitAfterImport() {
+    this.blockchain = new Blockchain();
+    await this.blockchain.init(this.wallet.address);
+
+    if (this.signaling) this.signaling.disconnect();
+    this.network = new PeerNetwork(this.wallet.address);
+    this.cas.attachNetwork(this.network);
+    this.protocol = new Protocol(this.network, this.blockchain);
+    this.protocol.onStateSync = () => {
+      this._syncing = true;
+      this._saveState();
+      for (const h of (this._listeners['stateChange'] || [])) {
+        try { h(); } catch (e) { console.error('[stateSync]', e); }
+      }
+      this._syncing = false;
+    };
+    this.ipfs = new IPFSBridge(this.cas);
+    this.consensus = new ProofOfStake(this.blockchain);
+    this.signaling = new SignalingClient(this.network, {
+      onStatusChange: (status) => {
+        this.emit('signalingStatus', status);
+        this.emit('stateChange');
+      },
+    });
+    this.network.signalingClient = this.signaling;
+    this.signaling.connect();
+
+    this.blockchain.onBlock(async (block) => {
+      await this.cas.put(block.toJSON ? block.toJSON() : block, 'json', true);
+      this._saveCASCache();
+      this._saveState();
+      this.emit('block', block);
+      this.emit('stateChange');
+    });
+    this.blockchain.onTransaction(() => this._saveState());
+    this._startConsensus();
+
+    await this.blockchain.claimFaucet(this.wallet);
+    this._saveState();
+
+    setTimeout(() => this._broadcastHello(), 500);
+    this.emit('walletCreated', this.wallet);
+    this.emit('stateChange');
+    console.log('[DiaDem] Wallet imported:', this.wallet.address);
+  }
+
   // ─── Social Actions (all go through blockchain + CAS) ───
 
   /** Create a post (content stored in CAS + IPFS, hash stored on-chain) */
-  async createPost(content, media = null) {
+  async createPost(content, media = null, options = {}) {
     this._requireWallet();
     // Store content in CAS first
     const casResult = await this.cas.putPost({
@@ -258,6 +355,8 @@ export class DiaDemNode {
     // Create blockchain transaction with CAS hash reference
     const tx = await createPost(this.wallet, content, media);
     tx.data.casHash = casResult.hash; // Link to CAS
+    if (options.mediaList) tx.data.mediaList = options.mediaList;
+    if (options.spoilerMedia) tx.data.spoilerMedia = true;
     await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
     await this.blockchain.addTransaction(tx);
     this.protocol.broadcastTransaction(tx);
@@ -306,6 +405,22 @@ export class DiaDemNode {
       type: TX_TYPES.UNLIKE,
       from: this.wallet.address,
       data: { postHash: postId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Repost/unrepost a post */
+  async repostPost(postId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.REPOST,
+      from: this.wallet.address,
+      data: { postId },
       nonce: Date.now(),
     });
     await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
@@ -586,6 +701,55 @@ export class DiaDemNode {
     return tx;
   }
 
+  /** Create a story (24h ephemeral content) */
+  async createStory(storyData) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.STORY,
+      from: this.wallet.address,
+      data: storyData,
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Get active stories (respects per-story duration, excludes hidden) */
+  getActiveStories() {
+    const now = Date.now();
+    const result = [];
+    for (const [addr, stories] of this.blockchain.state.stories) {
+      const active = stories.filter(s => {
+        if (s.hidden) return false;
+        if (s.duration === 0) return true; // permanent
+        const expiresAt = s.timestamp + (s.duration || 24) * 60 * 60 * 1000;
+        return now < expiresAt;
+      });
+      if (active.length > 0) {
+        result.push({
+          address: addr,
+          profile: this.getProfile(addr),
+          stories: active,
+        });
+      }
+    }
+    const myAddr = this.wallet?.address;
+    result.sort((a, b) => {
+      if (a.address === myAddr) return -1;
+      if (b.address === myAddr) return 1;
+      return b.stories[b.stories.length - 1].timestamp - a.stories[a.stories.length - 1].timestamp;
+    });
+    return result;
+  }
+
+  /** Get all stories (including expired) for archive */
+  getAllStories(address) {
+    return this.blockchain.state.stories.get(address) || [];
+  }
+
   /** Update profile (stored in CAS, hash on-chain) */
   async updateProfile(profileData) {
     this._requireWallet();
@@ -675,7 +839,7 @@ export class DiaDemNode {
   getUserPosts(address) {
     const myAddr = this.wallet?.address;
     const postIds = this.blockchain.state.postsByAuthor.get(address) || [];
-    return postIds.map(pid => {
+    const posts = postIds.map(pid => {
       const post = this.blockchain.state.posts.get(pid);
       if (!post) return null;
       const likesSet = this.blockchain.state.likes.get(pid) || new Set();
@@ -685,7 +849,28 @@ export class DiaDemNode {
         likesCount: likesSet.size,
         liked: myAddr ? likesSet.has(myAddr) : false,
       };
-    }).filter(Boolean).reverse();
+    }).filter(Boolean);
+
+    // Add reposts — posts this user reposted
+    for (const [pid, repostSet] of this.blockchain.state.reposts) {
+      if (repostSet.has(address)) {
+        const post = this.blockchain.state.posts.get(pid);
+        if (post && post.author !== address) {
+          const likesSet = this.blockchain.state.likes.get(pid) || new Set();
+          posts.push({
+            ...post,
+            profile: this.blockchain.state.getProfile(post.author),
+            likesCount: likesSet.size,
+            liked: myAddr ? likesSet.has(myAddr) : false,
+            repostedBy: address,
+            repostedByProfile: this.blockchain.state.getProfile(address),
+          });
+        }
+      }
+    }
+
+    posts.sort((a, b) => b.timestamp - a.timestamp);
+    return posts;
   }
 
   getSocialStats(address = null) {

@@ -14,6 +14,11 @@
 const RECONNECT_DELAY = 3000;
 const MAX_RECONNECT_DELAY = 30000;
 
+// Use early-saved RTCPeerConnection reference from index.html (before SES lockdown
+// from browser extensions like MetaMask can strip it from the global scope)
+const _RTCPeerConnection = (typeof window !== 'undefined' &&
+  (window.__RTCPeerConnection || window.RTCPeerConnection || window.webkitRTCPeerConnection)) || null;
+
 export class SignalingClient {
   constructor(peerNetwork, options = {}) {
     this.peerNetwork = peerNetwork;
@@ -154,16 +159,35 @@ export class SignalingClient {
     }
   }
 
+  /** Send a message to all peers via WebSocket relay (fallback when WebRTC unavailable) */
+  relayBroadcast(payload) {
+    if (this.ws?.readyState === 1) {
+      this.ws.send(JSON.stringify({ type: 'broadcast', payload }));
+    }
+  }
+
   /** Initiate a WebRTC connection to a remote peer */
   async _initiateConnection(remotePeerId) {
     if (this.pendingConnections.has(remotePeerId)) return;
+    if (!_RTCPeerConnection) {
+      // WebRTC unavailable — use WS relay for sync instead
+      if (!this._warnedNoRTC) {
+        console.warn('[Signal] RTCPeerConnection not available — using WebSocket relay for sync');
+        this._warnedNoRTC = true;
+      }
+      // Trigger onPeerConnect so Protocol sends HELLO (which will go through relay)
+      if (this.peerNetwork.onPeerConnect) {
+        this.peerNetwork.onPeerConnect(remotePeerId);
+      }
+      return;
+    }
 
     const ICE_SERVERS = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ];
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new _RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.pendingConnections.set(remotePeerId, pc);
 
     const channel = pc.createDataChannel('diadem', { ordered: true });
@@ -224,12 +248,17 @@ export class SignalingClient {
 
   /** Handle an incoming WebRTC offer */
   async _handleOffer(fromPeerId, offer) {
+    if (!_RTCPeerConnection) {
+      console.warn('[Signal] RTCPeerConnection not available');
+      return;
+    }
+
     const ICE_SERVERS = [
       { urls: 'stun:stun.l.google.com:19302' },
       { urls: 'stun:stun1.l.google.com:19302' },
     ];
 
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    const pc = new _RTCPeerConnection({ iceServers: ICE_SERVERS });
     this.pendingConnections.set(fromPeerId, pc);
 
     pc.onicecandidate = (event) => {

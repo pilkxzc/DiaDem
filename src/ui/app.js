@@ -9,6 +9,38 @@ import { t, getLang, setLang, getLanguages } from '../i18n.js';
 
 let node = null;
 
+const LEVEL_COLORS = {
+  'Newcomer': '#6B7280', 'Beginner': '#9CA3AF', 'Member': '#3B82F6', 'Active': '#22C55E',
+  'Veteran': '#8B5CF6', 'Expert': '#F59E0B', 'Legend': '#EF4444', 'Bronze': '#CD7F32',
+  'Silver': '#C0C0C0', 'Gold': '#FFD700', 'Platinum': '#00CED1', 'Diamond': '#B9F2FF',
+  'Master': '#FF6B6B', 'Grandmaster': '#FF4500', 'Titan': '#DC143C', 'Overlord': '#9400D3',
+  'Sovereign': '#4B0082', 'Celestial': '#00BFFF', 'Mythic': '#FF1493', 'Transcendent': '#FFD700',
+  'Immortal': '#FF0000',
+};
+
+const LEVEL_THRESHOLDS = [
+  { level: 'Newcomer', min: 0 }, { level: 'Beginner', min: 5 }, { level: 'Member', min: 30 },
+  { level: 'Active', min: 100 }, { level: 'Veteran', min: 200 }, { level: 'Expert', min: 500 },
+  { level: 'Legend', min: 1000 }, { level: 'Bronze', min: 2000 }, { level: 'Silver', min: 5000 },
+  { level: 'Gold', min: 10000 }, { level: 'Platinum', min: 20000 }, { level: 'Diamond', min: 30000 },
+  { level: 'Master', min: 50000 }, { level: 'Grandmaster', min: 70000 }, { level: 'Titan', min: 100000 },
+  { level: 'Overlord', min: 150000 }, { level: 'Sovereign', min: 200000 }, { level: 'Celestial', min: 300000 },
+  { level: 'Mythic', min: 500000 }, { level: 'Transcendent', min: 750000 }, { level: 'Immortal', min: 1000000 },
+];
+
+function getRepProgress(score) {
+  let curIdx = 0;
+  for (let i = LEVEL_THRESHOLDS.length - 1; i >= 0; i--) {
+    if (score >= LEVEL_THRESHOLDS[i].min) { curIdx = i; break; }
+  }
+  const cur = LEVEL_THRESHOLDS[curIdx];
+  const next = LEVEL_THRESHOLDS[curIdx + 1] || null;
+  const prev = curIdx > 0 ? LEVEL_THRESHOLDS[curIdx - 1] : null;
+  const progress = next ? ((score - cur.min) / (next.min - cur.min)) * 100 : 100;
+  const remaining = next ? next.min - score : 0;
+  return { curIdx, cur, next, prev, progress: Math.min(100, progress), remaining, total: LEVEL_THRESHOLDS.length };
+}
+
 // ─── Toast & Confirm System (replaces browser alert/confirm/prompt) ──
 
 function _ensureToastContainer() {
@@ -141,10 +173,160 @@ function resizeImage(file, maxW, maxH) {
   });
 }
 
+/**
+ * Image crop editor modal — canvas-based, no CSS transform.
+ * @param {File} file - image file
+ * @param {object} opts - { cropW, cropH, shape: 'circle'|'rect', title }
+ * @returns {Promise<string|null>} base64 data URL or null if cancelled
+ */
+function showImageEditor(file, opts = {}) {
+  const { cropW = 256, cropH = 256, shape = 'rect', title = 'Edit Image' } = opts;
+  return new Promise((resolve) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const imgSrc = e.target.result;
+
+      // Preview canvas size
+      const maxW = Math.min(440, window.innerWidth - 48);
+      const pvW = Math.min(maxW, cropW);
+      const pvH = Math.round(pvW * (cropH / cropW));
+      const borderR = shape === 'circle' ? '50%' : '12px';
+
+      const overlay = document.createElement('div');
+      overlay.className = 'confirm-overlay';
+      overlay.style.zIndex = '10000';
+      overlay.innerHTML = `
+        <div class="confirm-box" style="max-width:500px;width:90vw;padding:0;overflow:hidden;">
+          <div style="padding:20px 24px 12px;font-size:16px;font-weight:700;color:var(--text-primary);">${escapeHtml(title)}</div>
+          <div style="margin:0 auto;width:${pvW}px;height:${pvH}px;border-radius:${borderR};overflow:hidden;cursor:grab;touch-action:none;user-select:none;" id="_crop-wrap">
+            <canvas id="_crop-cv" width="${pvW}" height="${pvH}" style="display:block;width:${pvW}px;height:${pvH}px;"></canvas>
+          </div>
+          <div style="padding:16px 24px;display:flex;align-items:center;gap:12px;">
+            <i class="icon-minus" style="font-size:14px;color:var(--text-muted);"></i>
+            <input type="range" id="_crop-zoom" min="100" max="400" value="100" step="1" style="flex:1;accent-color:var(--btn-primary-bg);">
+            <i class="icon-plus" style="font-size:14px;color:var(--text-muted);"></i>
+          </div>
+          <div style="padding:12px 24px 20px;display:flex;gap:12px;justify-content:flex-end;">
+            <button class="btn btn-outline" id="_crop-cancel">Cancel</button>
+            <button class="btn btn-primary" id="_crop-save">Apply</button>
+          </div>
+        </div>
+      `;
+      document.body.appendChild(overlay);
+
+      const wrap = overlay.querySelector('#_crop-wrap');
+      const cv = overlay.querySelector('#_crop-cv');
+      const ctx = cv.getContext('2d');
+      const slider = overlay.querySelector('#_crop-zoom');
+
+      // x,y = top-left of drawn image in canvas coords; w,h = drawn size
+      let x = 0, y = 0, w = 0, h = 0;
+      let coverW = 0, coverH = 0; // size at zoom=100% (cover fit)
+      let dragging = false, dsx = 0, dsy = 0, dox = 0, doy = 0;
+
+      const img = new Image();
+      img.onload = () => {
+        // Cover fit: image fills entire canvas, cropping the overflow
+        const scale = Math.max(pvW / img.naturalWidth, pvH / img.naturalHeight);
+        coverW = img.naturalWidth * scale;
+        coverH = img.naturalHeight * scale;
+        w = coverW; h = coverH;
+        x = (pvW - w) / 2;
+        y = (pvH - h) / 2;
+        draw();
+      };
+      img.src = imgSrc;
+
+      function draw() {
+        ctx.clearRect(0, 0, pvW, pvH);
+        ctx.fillStyle = '#111';
+        ctx.fillRect(0, 0, pvW, pvH);
+        ctx.drawImage(img, x, y, w, h);
+      }
+
+      function clampPos() {
+        // Don't let edges show: image must cover canvas
+        if (w >= pvW) { x = Math.min(0, Math.max(pvW - w, x)); }
+        else { x = (pvW - w) / 2; }
+        if (h >= pvH) { y = Math.min(0, Math.max(pvH - h, y)); }
+        else { y = (pvH - h) / 2; }
+      }
+
+      function applyZoom(newW, newH, pivotX, pivotY) {
+        // Keep point under pivot stationary
+        const rx = (pivotX - x) / w;
+        const ry = (pivotY - y) / h;
+        w = newW; h = newH;
+        x = pivotX - rx * w;
+        y = pivotY - ry * h;
+        clampPos();
+        draw();
+      }
+
+      // Slider: 100 = cover, 400 = 4x cover
+      slider.addEventListener('input', () => {
+        const z = parseInt(slider.value) / 100;
+        applyZoom(coverW * z, coverH * z, pvW / 2, pvH / 2);
+      });
+
+      // Drag
+      wrap.addEventListener('pointerdown', (e) => {
+        dragging = true;
+        dsx = e.clientX; dsy = e.clientY;
+        dox = x; doy = y;
+        wrap.setPointerCapture(e.pointerId);
+        wrap.style.cursor = 'grabbing';
+      });
+      wrap.addEventListener('pointermove', (e) => {
+        if (!dragging) return;
+        x = dox + (e.clientX - dsx);
+        y = doy + (e.clientY - dsy);
+        clampPos();
+        draw();
+      });
+      wrap.addEventListener('pointerup', () => { dragging = false; wrap.style.cursor = 'grab'; });
+      wrap.addEventListener('lostpointercapture', () => { dragging = false; wrap.style.cursor = 'grab'; });
+
+      // Wheel zoom towards cursor
+      wrap.addEventListener('wheel', (e) => {
+        e.preventDefault();
+        const factor = e.deltaY > 0 ? 0.95 : 1.05;
+        const nw = Math.max(coverW, Math.min(coverW * 4, w * factor));
+        const nh = nw * (coverH / coverW);
+        slider.value = Math.round((nw / coverW) * 100);
+        const rect = wrap.getBoundingClientRect();
+        applyZoom(nw, nh, e.clientX - rect.left, e.clientY - rect.top);
+      }, { passive: false });
+
+      // Cancel
+      overlay.querySelector('#_crop-cancel').onclick = () => { overlay.remove(); resolve(null); };
+      overlay.addEventListener('click', (e) => { if (e.target === overlay) { overlay.remove(); resolve(null); } });
+
+      // Save — redraw onto output-sized canvas
+      overlay.querySelector('#_crop-save').onclick = () => {
+        const outCv = document.createElement('canvas');
+        outCv.width = cropW; outCv.height = cropH;
+        const outCtx = outCv.getContext('2d');
+        // Scale preview coords → output coords
+        const s = cropW / pvW;
+        outCtx.drawImage(img, x * s, y * s, w * s, h * s);
+        const result = outCv.toDataURL('image/jpeg', 0.85);
+        overlay.remove();
+        resolve(result);
+      };
+    };
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(file);
+  });
+}
+
 // Pending compose image data URL
 let _composeImageData = null;
+let _composeImageList = []; // multiple images (up to 4)
+let _composeSpoiler = false;
 // Pending avatar data URL
 let _pendingAvatarData = null;
+let _pendingBannerData = null;
 // Pending DM image data URL
 let _dmImageData = null;
 // Current open DM chat address
@@ -275,6 +457,7 @@ const standalonePages = ['landing', 'login', 'signup', 'wallet-setup'];
 // Current context for sub-pages (postId for single-post, address for other-profile)
 let _currentPostId = null;
 let _currentProfileAddr = null;
+let _currentProfileTab = 'posts';
 
 function showPage(pageId) {
   // Parse compound hashes like "single-post/abc123" or "other-profile/0xabc"
@@ -288,6 +471,7 @@ function showPage(pageId) {
 
   if (basePage === 'single-post' && param) _currentPostId = param;
   if (basePage === 'other-profile' && param) _currentProfileAddr = param;
+  if (basePage !== 'profile' && basePage !== 'other-profile') _currentProfileTab = 'posts';
 
   document.querySelectorAll('.page').forEach(p => p.classList.add('hidden'));
   const appShell = document.getElementById('app-shell');
@@ -303,6 +487,10 @@ function showPage(pageId) {
     document.querySelectorAll('.sidebar-nav a').forEach(l => l.classList.remove('active'));
     const link = document.querySelector(`.sidebar-nav a[data-page="${basePage}"]`);
     if (link) link.classList.add('active');
+    // Mobile nav
+    document.querySelectorAll('.mobile-bottom-nav a').forEach(l => l.classList.remove('active'));
+    const mLink = document.querySelector(`.mobile-bottom-nav a[data-page="${basePage}"]`);
+    if (mLink) mLink.classList.add('active');
   }
 
   // Запам'ятати поточну сторінку (з параметром)
@@ -378,9 +566,9 @@ function updateSidebarInfo() {
   if (el) {
     const peers = info.network.peers;
     const sigOk = info.network.signaling === 'connected';
-    const syncStatus = peers > 0 ? 'synced' : (sigOk ? 'connecting' : 'offline');
-    const statusColor = syncStatus === 'synced' ? 'var(--green, #22C55E)' : (syncStatus === 'connecting' ? 'var(--warning, #F59E0B)' : 'var(--danger, #EF4444)');
-    const statusLabel = syncStatus === 'synced' ? `${peers} ${peers === 1 ? 'peer' : 'peers'}` : (syncStatus === 'connecting' ? t('connecting') || 'Connecting...' : t('offline') || 'Offline');
+    const syncStatus = peers > 0 ? 'synced' : (sigOk ? 'ready' : 'offline');
+    const statusColor = syncStatus === 'synced' ? 'var(--green, #22C55E)' : (syncStatus === 'ready' ? 'var(--green, #22C55E)' : 'var(--danger, #EF4444)');
+    const statusLabel = syncStatus === 'synced' ? `${peers} ${peers === 1 ? 'peer' : 'peers'}` : (syncStatus === 'ready' ? (t('online') || 'Online') : t('offline') || 'Offline');
 
     el.innerHTML = `
       <div class="sidebar-connection-bar">
@@ -390,7 +578,7 @@ function updateSidebarInfo() {
           <span class="sidebar-conn-block">#${info.chain.height}</span>
         </div>
         <div class="sidebar-conn-track">
-          <div class="sidebar-conn-fill" style="background:${statusColor};width:${syncStatus === 'synced' ? '100' : (syncStatus === 'connecting' ? '40' : '0')}%;"></div>
+          <div class="sidebar-conn-fill" style="background:${statusColor};width:${syncStatus === 'offline' ? '0' : '100'}%;"></div>
         </div>
       </div>
       <div class="sidebar-user-card" onclick="location.hash='profile'">
@@ -434,13 +622,114 @@ function escapeHtml(str) {
   return str.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
 }
 
+// ─── Text formatting ──────────────────────────────────────
+function formatPostContent(text) {
+  let s = escapeHtml(text);
+  // Bold: **text** or __text__
+  s = s.replace(/\*\*(.+?)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/__(.+?)__/g, '<strong>$1</strong>');
+  // Italic: *text* or _text_
+  s = s.replace(/(?<!\*)\*(?!\*)(.+?)(?<!\*)\*(?!\*)/g, '<em>$1</em>');
+  s = s.replace(/(?<!_)_(?!_)(.+?)(?<!_)_(?!_)/g, '<em>$1</em>');
+  // Strikethrough: ~~text~~
+  s = s.replace(/~~(.+?)~~/g, '<del>$1</del>');
+  // Code: `text`
+  s = s.replace(/`(.+?)`/g, '<code style="background:var(--bg-input);padding:1px 5px;border-radius:4px;font-size:13px;">$1</code>');
+  // Spoiler: ||text||
+  s = s.replace(/\|\|(.+?)\|\|/g, '<span class="post-spoiler-text" onclick="this.classList.add(\'revealed\')">$1</span>');
+  // Line breaks
+  s = s.replace(/\n/g, '<br>');
+  return s;
+}
+
+// ─── Post media renderer ──────────────────────────────────
+function renderPostMedia(post) {
+  const images = post.mediaList || (post.media ? [post.media] : []);
+  if (images.length === 0) return '';
+  const isSpoiler = post.spoilerMedia;
+  const count = images.length;
+  const gridClass = count === 1 ? 'post-media-single' : (count === 2 ? 'post-media-2' : (count === 3 ? 'post-media-3' : 'post-media-4'));
+
+  let html = `<div class="post-media-grid ${gridClass}${isSpoiler ? ' post-media-spoiler' : ''}">`;
+  if (isSpoiler) {
+    html += `<div class="post-spoiler-overlay" onclick="this.parentElement.classList.remove('post-media-spoiler');this.remove();">
+      <i class="icon-eye-off" style="font-size:24px;"></i>
+      <span>Spoiler</span>
+    </div>`;
+  }
+  images.forEach((src, i) => {
+    if (i < 4) {
+      html += `<img src="${src}" alt="" loading="lazy" onclick="event.stopPropagation();window.diademUI._viewImage('${src.replace(/'/g, "\\'")}')" style="cursor:pointer;">`;
+    }
+  });
+  html += '</div>';
+  return html;
+}
+
 // ─── Feed ──────────────────────────────────────────────────
+
+function renderStoryBar() {
+  const activeStories = node.getActiveStories();
+  const myAddr = node.wallet?.address;
+  const myProfile = node.getProfile(myAddr) || {};
+  const myStories = activeStories.find(s => s.address === myAddr);
+
+  let html = `<div class="story-bar">`;
+
+  // Add story button (always first)
+  const myName = myProfile.name || 'You';
+  const myInitials = myName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+  const myAvatar = myProfile.avatar
+    ? `<img src="${myProfile.avatar}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+    : `<span style="font-size:14px;font-weight:600;color:var(--text-muted);">${myInitials}</span>`;
+
+  html += `
+    <div class="story-item" onclick="window.diademUI.${myStories ? `viewStory('${myAddr}')` : 'createStory()'}">
+      <div class="story-ring${myStories ? '' : ' story-ring-add'}">
+        <div class="story-avatar">${myAvatar}</div>
+        <div class="story-add-badge" onclick="event.stopPropagation();window.diademUI.createStory()"><i class="icon-plus" style="font-size:10px;color:#FFF;"></i></div>
+      </div>
+      <div class="story-name">${myStories ? t('stories_your') : t('stories_add')}</div>
+    </div>`;
+
+  // Other users' stories
+  for (const s of activeStories) {
+    if (s.address === myAddr) continue;
+    const prof = s.profile || {};
+    const sName = prof.name || s.address.slice(0, 8);
+    const sInitials = sName.split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+    const sAvatar = prof.avatar
+      ? `<img src="${prof.avatar}" alt="" style="width:100%;height:100%;object-fit:cover;border-radius:50%;">`
+      : `<span style="font-size:14px;font-weight:600;color:var(--text-muted);">${sInitials}</span>`;
+    const allViewed = s.stories.every(st => st.views && st.views.has(myAddr));
+
+    html += `
+      <div class="story-item" onclick="window.diademUI.viewStory('${s.address}')">
+        <div class="story-ring${allViewed ? ' story-ring-seen' : ''}">
+          <div class="story-avatar">${sAvatar}</div>
+        </div>
+        <div class="story-name">${escapeHtml(sName.length > 10 ? sName.slice(0, 9) + '...' : sName)}</div>
+      </div>`;
+  }
+
+  html += `</div>`;
+  return html;
+}
 
 function renderFeed() {
   const container = document.getElementById('feed-posts');
   if (!container) return;
   const header = container.closest('.content-area')?.querySelector('.page-header h2');
   if (header) header.textContent = t('feed_title');
+
+  // Story bar
+  let storyBarEl = document.getElementById('story-bar-container');
+  if (!storyBarEl) {
+    storyBarEl = document.createElement('div');
+    storyBarEl.id = 'story-bar-container';
+    container.parentElement.insertBefore(storyBarEl, container);
+  }
+  storyBarEl.innerHTML = renderStoryBar();
 
   // Show all posts (global feed) — everyone sees everything, this is a decentralized network
   const feed = node.getExplorePosts(50);
@@ -508,9 +797,16 @@ function renderPost(post, expanded = false) {
     ? (postNameColorItem.preview.startsWith('linear') ? `background:${postNameColorItem.preview};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-size:200% 200%;animation:gradientShift 3s ease infinite;` : `color:${postNameColorItem.preview};`)
     : '';
   const postFrameItem = postDecor.frame ? SHOP_ITEMS.find(i => i.id === postDecor.frame) : null;
+  const postFontItem = postDecor.name_font ? SHOP_ITEMS.find(i => i.id === postDecor.name_font) : null;
+  const postFontStyle = postFontItem ? `font-family:${postFontItem.font};` : '';
+
+  const repostLabel = post.repostedBy
+    ? `<div class="post-repost-label"><i class="icon-repeat-2" style="font-size:12px;"></i> ${escapeHtml(post.repostedByProfile?.name || post.repostedBy.slice(0, 10))} reposted</div>`
+    : '';
 
   return `
     <div class="post${expanded ? ' single-post' : ''}" data-post-id="${postId}">
+      ${repostLabel}
       <div class="post-header">
         ${postFrameItem
           ? `<div class="avatar${expanded ? ' avatar-lg' : ''}" style="border:2px solid transparent;background-image:${postFrameItem.preview};background-origin:border-box;background-clip:padding-box,border-box;">
@@ -519,20 +815,20 @@ function renderPost(post, expanded = false) {
           : renderAvatar(profile, expanded ? 'lg' : '')
         }
         <div style="flex:1;">
-          <span class="post-author" style="cursor:pointer;${postNameStyle}" onclick="window.diademUI.viewUser('${post.author}')">${escapeHtml(name)}${postBadgeHtml}</span>
+          <span class="post-author" style="cursor:pointer;${postNameStyle}${postFontStyle}" onclick="window.diademUI.viewUser('${post.author}')">${escapeHtml(name)}${postBadgeHtml}</span>
           <div class="post-handle">${escapeHtml(handle)} · ${timeAgo}</div>
         </div>
       </div>
-      <div class="post-content${post.content.length > 500 && !expanded ? '' : ' expanded'}" style="${expanded ? 'font-size:16px;line-height:1.6;' : 'cursor:pointer;'}" ${expanded ? '' : `onclick="window.diademUI.viewPost('${postId}')"`}>${escapeHtml(post.content)}</div>
+      <div class="post-content${post.content.length > 500 && !expanded ? '' : ' expanded'}" style="${expanded ? 'font-size:16px;line-height:1.6;' : 'cursor:pointer;'}" ${expanded ? '' : `onclick="window.diademUI.viewPost('${postId}')"`}>${formatPostContent(post.content)}</div>
       ${post.content.length > 500 && !expanded ? `<button class="post-content-more" onclick="const c=this.previousElementSibling;c.classList.toggle('expanded');this.textContent=c.classList.contains('expanded')?'${t('sp_show_less')}':'${t('sp_show_more')}'">${t('sp_show_more')}</button>` : ''}
-      ${post.media ? `<div class="post-image"><img src="${post.media}" alt="" loading="lazy" onclick="event.stopPropagation();window.diademUI._viewImage(this.src)" style="cursor:pointer;"></div>` : ''}
+      ${renderPostMedia(post)}
       ${renderReactions(postId)}
       <div class="post-actions">
         <button class="post-action${liked}" onclick="window.diademUI.likePost('${postId}')">
           <i class="icon-heart"></i> ${likesCount}
         </button>
         <button class="post-action" onclick="window.diademUI.viewPost('${postId}')"><i class="icon-message-circle"></i> ${(node.blockchain.state.replies.get(postId) || []).length}</button>
-        <button class="post-action" onclick="window.diademUI.showReactionPicker('${postId}')"><i class="icon-smile"></i></button>
+        <button class="post-action${(node.blockchain.state.reposts.get(postId) || new Set()).has(myAddr) ? ' reposted' : ''}" onclick="window.diademUI.repostPost('${postId}')"><i class="icon-repeat-2"></i> ${(node.blockchain.state.reposts.get(postId) || new Set()).size || ''}</button>
         <button class="post-action${isBookmarked ? ' liked' : ''}" onclick="window.diademUI.bookmarkPost('${postId}')"><i class="icon-bookmark"></i></button>
         ${post.author === node.wallet?.address ? `<button class="post-action" onclick="window.diademUI.deletePost('${postId}')" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
       </div>
@@ -581,12 +877,13 @@ function renderProfile(address = null) {
   const isFollowing = following.has(addr);
 
   // Reputation level colors
-  const levelColors = { 'Newcomer': '#6B7280', 'Beginner': '#9CA3AF', 'Member': '#3B82F6', 'Active': '#22C55E', 'Veteran': '#8B5CF6', 'Expert': '#F59E0B', 'Legend': '#EF4444' };
+  const levelColors = LEVEL_COLORS;
   const levelColor = levelColors[rep.level] || '#6B7280';
 
   // Decoration-derived styles
   const bannerItem = decor.banner ? SHOP_ITEMS.find(i => i.id === decor.banner) : null;
-  const bannerBg = bannerItem ? bannerItem.preview : 'linear-gradient(135deg, var(--btn-primary-bg) 0%, var(--purple) 100%)';
+  const customBanner = profile.banner;
+  const bannerBg = customBanner ? `url(${customBanner})` : (bannerItem ? bannerItem.preview : 'linear-gradient(135deg, var(--btn-primary-bg) 0%, var(--purple) 100%)');
   const frameItem = decor.frame ? SHOP_ITEMS.find(i => i.id === decor.frame) : null;
   const frameStyle = frameItem ? `border:3px solid transparent;background-image:${frameItem.preview};background-origin:border-box;background-clip:padding-box,border-box;` : 'border:4px solid var(--bg);';
   const badgeItem = decor.badge ? SHOP_ITEMS.find(i => i.id === decor.badge) : null;
@@ -605,10 +902,12 @@ function renderProfile(address = null) {
     : bioStyleItem?.id === 'bio-gradient' ? 'background:linear-gradient(90deg,#EC4899,#8B5CF6);-webkit-background-clip:text;-webkit-text-fill-color:transparent;'
     : '';
   const titleItem = decor.title ? SHOP_ITEMS.find(i => i.id === decor.title) : null;
+  const fontItem = decor.name_font ? SHOP_ITEMS.find(i => i.id === decor.name_font) : null;
+  const fontStyle = fontItem ? `font-family:${fontItem.font};` : '';
 
   el.innerHTML = `
-    <div class="profile-cover" style="background:${bannerBg};"></div>
-    <div style="padding:0 40px 24px 40px;">
+    <div class="profile-cover" style="background:${bannerBg};${customBanner ? 'background-size:cover;background-position:center;' : ''}"></div>
+    <div style="padding:0 clamp(12px, 4vw, 40px) 24px;">
       <div style="display:flex;justify-content:space-between;align-items:flex-end;margin-top:-48px;">
         ${profile.avatar
           ? `<div class="avatar avatar-xl" style="${frameStyle}"><img src="${profile.avatar}" alt=""></div>`
@@ -625,7 +924,7 @@ function renderProfile(address = null) {
         </div>
       </div>
       <div style="margin-top:12px;">
-        <div class="profile-name${nameClass}" style="${nameStyle}">${escapeHtml(name)}${badgeHtml} <span style="font-size:12px;color:${levelColor};background:${levelColor}20;padding:2px 8px;border-radius:10px;font-weight:600;vertical-align:middle;-webkit-text-fill-color:${levelColor};">${rep.level}</span></div>
+        <div class="profile-name${nameClass}" style="${nameStyle}${fontStyle}">${escapeHtml(name)}${badgeHtml} <span style="font-size:12px;color:${levelColor};background:${levelColor}20;padding:2px 8px;border-radius:10px;font-weight:600;vertical-align:middle;-webkit-text-fill-color:${levelColor};">${rep.level}</span></div>
         <div class="profile-handle">${escapeHtml(handle)}${titleItem ? ` <span style="font-size:11px;font-weight:600;color:${titleItem.preview};margin-left:4px;">${titleItem.name}</span>` : ''}</div>
         <div style="display:flex;align-items:center;gap:6px;margin-top:4px;">
           <i class="icon-wallet" style="font-size:14px;color:var(--text-muted);"></i>
@@ -644,17 +943,27 @@ function renderProfile(address = null) {
       </div>
     </div>
     <div style="height:1px;background:var(--divider);"></div>
-    <div class="tabs" style="padding:0 40px;" id="profile-tabs-${addr.slice(0,8)}">
+    <div class="tabs" style="padding:0 clamp(12px, 4vw, 40px);" id="profile-tabs-${addr.slice(0,8)}">
       <button class="tab active" onclick="window.diademUI._profileTab('${addr}','posts',this)">${t('profile_posts')}</button>
       <button class="tab" onclick="window.diademUI._profileTab('${addr}','replies',this)">${t('profile_replies')}</button>
       <button class="tab" onclick="window.diademUI._profileTab('${addr}','media',this)">${t('profile_media')}</button>
       <button class="tab" onclick="window.diademUI._profileTab('${addr}','likes',this)">${t('profile_likes')}</button>
+      <button class="tab" onclick="window.diademUI._profileTab('${addr}','stats',this)">${t('profile_stats')}</button>
+      <button class="tab" onclick="window.diademUI._profileTab('${addr}','stories',this)">${t('stories_title')}</button>
     </div>
-    <div style="padding:0 40px;" id="profile-tab-content">
+    <div style="padding:0 clamp(12px, 4vw, 40px);" id="profile-tab-content">
       ${posts.length > 0 ? posts.map(p => renderPost(p)).join('') :
         `<div class="text-muted" style="text-align:center;padding:40px;">${t('profile_no_posts')}</div>`}
     </div>
   `;
+
+  // Restore active tab if not 'posts'
+  if (_currentProfileTab && _currentProfileTab !== 'posts') {
+    const savedTab = _currentProfileTab;
+    requestAnimationFrame(() => {
+      window.diademUI._profileTab(addr, savedTab);
+    });
+  }
 }
 
 // ─── Single Post View ─────────────────────────────────────
@@ -663,7 +972,17 @@ function renderSinglePost(postId) {
   const el = document.getElementById('single-post-data');
   if (!el) return;
 
-  const post = node.blockchain.state.posts.get(postId);
+  let post = node.blockchain.state.posts.get(postId);
+  // If not found in posts, search in replies
+  if (!post) {
+    for (const [parentId, replyList] of node.blockchain.state.replies) {
+      const found = replyList.find(r => r.id === postId || r.hash === postId);
+      if (found) {
+        post = { ...found, _isReply: true, _parentId: parentId };
+        break;
+      }
+    }
+  }
   if (!post) {
     el.innerHTML = `<div class="text-muted" style="text-align:center;padding:40px;">${t('search_empty')}</div>`;
     return;
@@ -696,8 +1015,13 @@ function renderSinglePost(postId) {
   });
 
   // Reputation level colors
-  const levelColors = { 'Newcomer': '#6B7280', 'Beginner': '#9CA3AF', 'Member': '#3B82F6', 'Active': '#22C55E', 'Veteran': '#8B5CF6', 'Expert': '#F59E0B', 'Legend': '#EF4444' };
+  const levelColors = LEVEL_COLORS;
   const levelColor = levelColors[rep.level] || '#6B7280';
+
+  // Decor
+  const spDecor = node.blockchain.state.profileDecor.get(post.author) || {};
+  const spFontItem = spDecor.name_font ? SHOP_ITEMS.find(i => i.id === spDecor.name_font) : null;
+  const spFontStyle = spFontItem ? `font-family:${spFontItem.font};` : '';
 
   // List of likers
   const likersList = [...likesSet].slice(0, 8);
@@ -736,7 +1060,7 @@ function renderSinglePost(postId) {
         <div class="sp-author-left" onclick="window.diademUI.viewUser('${post.author}')" style="cursor:pointer;">
           ${renderAvatar(profile, 'lg')}
           <div class="sp-author-info">
-            <div class="sp-author-name">
+            <div class="sp-author-name" style="${spFontStyle}">
               ${escapeHtml(name)}
               <span class="sp-badge" style="background:${levelColor}20;color:${levelColor};">${rep.level}</span>
             </div>
@@ -750,13 +1074,10 @@ function renderSinglePost(postId) {
         `}
       </div>
 
-      <div class="sp-content">${escapeHtml(post.content)}</div>
+      ${post._isReply ? `<div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;"><i class="icon-corner-up-left" style="font-size:12px;"></i> <a href="#single-post/${post._parentId}" onclick="event.preventDefault();window.diademUI.viewPost('${post._parentId}')" style="color:var(--btn-primary-bg);text-decoration:none;">${t('reply_to_original') || 'View original post'}</a></div>` : ''}
+      <div class="sp-content">${formatPostContent(post.content)}</div>
 
-      ${post.media ? `
-        <div class="sp-media">
-          <img src="${post.media}" alt="" loading="lazy" onclick="window.diademUI._viewImage(this.src)">
-        </div>
-      ` : ''}
+      ${renderPostMedia(post)}
 
       ${renderReactions(postId)}
 
@@ -795,9 +1116,9 @@ function renderSinglePost(postId) {
           <i class="icon-message-circle"></i>
           <span>${t('sp_reply')}</span>
         </button>
-        <button class="sp-action-btn" onclick="window.diademUI.showReactionPicker('${postId}')">
-          <i class="icon-smile"></i>
-          <span>${t('sp_react')}</span>
+        <button class="sp-action-btn${(node.blockchain.state.reposts.get(postId) || new Set()).has(myAddr) ? ' reposted' : ''}" onclick="window.diademUI.repostPost('${postId}')">
+          <i class="icon-repeat-2"></i>
+          <span>${(node.blockchain.state.reposts.get(postId) || new Set()).size || ''} Repost</span>
         </button>
         <button class="sp-action-btn${isBookmarked ? ' liked' : ''}" onclick="window.diademUI.bookmarkPost('${postId}')">
           <i class="icon-bookmark"></i>
@@ -872,7 +1193,7 @@ function renderWallet() {
   const el = document.getElementById('wallet-data');
   if (!el) return;
 
-  const levelColors = { 'Newcomer': '#6B7280', 'Beginner': '#9CA3AF', 'Member': '#3B82F6', 'Active': '#22C55E', 'Veteran': '#8B5CF6', 'Expert': '#F59E0B', 'Legend': '#EF4444' };
+  const levelColors = LEVEL_COLORS;
   const levelColor = levelColors[rep.level] || '#6B7280';
 
   el.innerHTML = `
@@ -893,8 +1214,8 @@ function renderWallet() {
         <div style="font-size:28px;font-weight:700;color:var(--text-primary);">${stake.amount.toLocaleString()} DDM</div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">APY 14.2%</div>
       </div>
-      <div class="card" style="padding:20px;">
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Reputation</div>
+      <div class="card" style="padding:20px;cursor:pointer;position:relative;" onclick="document.getElementById('rep-panel').classList.toggle('hidden')">
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Reputation <i class="icon-chevron-down" style="font-size:12px;"></i></div>
         <div style="font-size:28px;font-weight:700;color:${levelColor};">${rep.score.toFixed(1)}</div>
         <div style="font-size:13px;color:${levelColor};margin-top:4px;">${rep.level}</div>
       </div>
@@ -904,6 +1225,81 @@ function renderWallet() {
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${info.network.peers} ${t('wallet_peers')}</div>
       </div>
     </div>
+    ${(() => {
+      const rp = getRepProgress(rep.score);
+      const nextColor = rp.next ? (LEVEL_COLORS[rp.next.level] || '#6B7280') : levelColor;
+      const pct = Math.round(rp.progress);
+      return `
+    <div id="rep-panel" class="card hidden" style="padding:0;margin-bottom:24px;overflow:hidden;">
+      <!-- Hero banner -->
+      <div style="background:linear-gradient(135deg,${levelColor}20,${nextColor}10);padding:24px 24px 20px;border-bottom:1px solid var(--divider);">
+        <div style="display:flex;align-items:center;gap:16px;margin-bottom:16px;">
+          <div style="width:56px;height:56px;border-radius:50%;background:${levelColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#FFF;flex-shrink:0;">${rp.curIdx + 1}</div>
+          <div style="flex:1;">
+            <div style="font-size:20px;font-weight:800;color:${levelColor};line-height:1.2;">${rep.level}</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${rep.score.toLocaleString()} reputation</div>
+          </div>
+          ${rp.next ? `<div style="text-align:right;">
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Next</div>
+            <div style="font-size:15px;font-weight:700;color:${nextColor};">${rp.next.level}</div>
+          </div>` : `<div style="font-size:13px;font-weight:700;color:${levelColor};">MAX</div>`}
+        </div>
+        <!-- Progress bar -->
+        <div style="height:8px;background:rgba(0,0,0,0.15);border-radius:4px;overflow:hidden;">
+          <div style="height:100%;width:${pct}%;background:linear-gradient(90deg,${levelColor},${nextColor});border-radius:4px;"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;">
+          <span style="color:${levelColor};font-weight:600;">${pct}%</span>
+          <span style="color:var(--text-muted);">${rp.next ? rp.remaining.toLocaleString() + ' to go' : 'Complete!'}</span>
+        </div>
+      </div>
+
+      <!-- Stats row -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--divider);">
+        ${[
+          { label: 'Posts', val: rep.posts, icon: 'edit-3', rep: '+1' },
+          { label: 'Likes In', val: rep.likesReceived, icon: 'heart', rep: '+2' },
+          { label: 'Likes Out', val: rep.likesGiven, icon: 'thumbs-up', rep: '+0.5' },
+          { label: 'Followers', val: rep.followersGained, icon: 'users', rep: '+3' },
+        ].map(s => `
+          <div style="padding:16px 12px;text-align:center;border-right:1px solid var(--divider);">
+            <i class="icon-${s.icon}" style="font-size:16px;color:var(--text-muted);margin-bottom:6px;display:block;"></i>
+            <div style="font-size:18px;font-weight:700;color:var(--text-primary);">${s.val.toLocaleString()}</div>
+            <div style="font-size:11px;color:var(--text-muted);">${s.label}</div>
+            <div style="font-size:10px;color:var(--green);margin-top:2px;">${s.rep} rep</div>
+          </div>
+        `).join('')}
+      </div>
+
+      <!-- Level roadmap -->
+      <div style="padding:20px 24px;">
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Level Roadmap</div>
+        <div style="display:flex;flex-direction:column;gap:4px;">
+          ${LEVEL_THRESHOLDS.map((t, i) => {
+            const c = LEVEL_COLORS[t.level] || '#6B7280';
+            const passed = rep.score >= t.min;
+            const isCurrent = t.level === rep.level;
+            const nextT = LEVEL_THRESHOLDS[i + 1];
+            const segPct = passed && nextT ? Math.min(100, ((rep.score - t.min) / (nextT.min - t.min)) * 100) : (passed ? 100 : 0);
+            return `
+            <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:8px;${isCurrent ? 'background:' + c + '15;' : ''}">
+              <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${passed ? c : 'var(--divider)'};${isCurrent ? 'box-shadow:0 0 6px ' + c + ';' : ''}"></div>
+              <div style="flex:1;min-width:0;">
+                <div style="display:flex;justify-content:space-between;align-items:center;">
+                  <span style="font-size:12px;font-weight:${isCurrent ? '700' : '500'};color:${passed ? c : 'var(--text-muted)'};">${t.level}</span>
+                  <span style="font-size:11px;color:var(--text-muted);">${t.min.toLocaleString()}</span>
+                </div>
+                ${isCurrent && rp.next ? `<div style="height:3px;background:var(--divider);border-radius:2px;margin-top:4px;overflow:hidden;">
+                  <div style="height:100%;width:${pct}%;background:${c};border-radius:2px;"></div>
+                </div>` : ''}
+              </div>
+              ${passed ? '<i class="icon-check" style="font-size:12px;color:var(--green);flex-shrink:0;"></i>' : ''}
+            </div>`;
+          }).join('')}
+        </div>
+      </div>
+    </div>`;
+    })()}
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
       <div class="card" style="padding:24px;">
         <h4 style="margin-bottom:16px;">${t('wallet_cas')}</h4>
@@ -945,14 +1341,6 @@ function renderWallet() {
           <div class="flex justify-between mb-8"><span>Followers Gained:</span><span style="color:var(--text-primary);">${rep.followersGained} (+3 rep)</span></div>
           <div class="flex justify-between"><span>Total Score:</span><span style="color:${levelColor};font-weight:700;">${rep.score.toFixed(1)} — ${rep.level}</span></div>
         </div>
-      </div>
-    </div>
-    <div class="card" style="padding:24px;margin-top:24px;">
-      <h4 style="margin-bottom:16px;">${t('wallet_quick')}</h4>
-      <div class="flex gap-12">
-        <button class="btn" style="background:var(--purple);color:#FFF;border:none;" onclick="window.diademUI.navigate('staking')">${t('wallet_stake_btn')}</button>
-        <button class="btn btn-outline" onclick="window.diademUI.navigate('transactions')">${t('wallet_view_tx')}</button>
-        <button class="btn btn-outline" onclick="window.diademUI.navigate('governance')">${t('governance_title')}</button>
       </div>
     </div>
   `;
@@ -1708,6 +2096,32 @@ const SHOP_ITEMS = [
   { id: 'poststyle-gradient-bg', slot: 'post_style', name: 'Gradient Background', desc: 'Subtle gradient post background', price: 70, preview: 'linear-gradient(135deg, #1E1B4B, #312E81)', category: 'Post Styles' },
   { id: 'poststyle-neon-border', slot: 'post_style', name: 'Neon Border', desc: 'Neon glowing post border', price: 95, preview: 'linear-gradient(135deg, #0FF, #F0F)', category: 'Post Styles' },
   { id: 'poststyle-gold-border', slot: 'post_style', name: 'Gold Border', desc: 'Premium gold post border', price: 110, preview: 'linear-gradient(135deg, #FFD700, #FFA500)', category: 'Post Styles' },
+
+  // ═══ NAME FONTS ═══
+  { id: 'font-playfair', slot: 'name_font', name: 'Playfair Display', desc: 'Elegant serif font', price: 30, preview: '#E5E7EB', font: "'Playfair Display', serif", category: 'Fonts' },
+  { id: 'font-oswald', slot: 'name_font', name: 'Oswald', desc: 'Bold condensed font', price: 25, preview: '#E5E7EB', font: "'Oswald', sans-serif", category: 'Fonts' },
+  { id: 'font-lobster', slot: 'name_font', name: 'Lobster', desc: 'Fun cursive script', price: 35, preview: '#E5E7EB', font: "'Lobster', cursive", category: 'Fonts' },
+  { id: 'font-pacifico', slot: 'name_font', name: 'Pacifico', desc: 'Retro surf style', price: 35, preview: '#E5E7EB', font: "'Pacifico', cursive", category: 'Fonts' },
+  { id: 'font-dancing', slot: 'name_font', name: 'Dancing Script', desc: 'Elegant handwriting', price: 30, preview: '#E5E7EB', font: "'Dancing Script', cursive", category: 'Fonts' },
+  { id: 'font-righteous', slot: 'name_font', name: 'Righteous', desc: 'Retro groovy style', price: 30, preview: '#E5E7EB', font: "'Righteous', sans-serif", category: 'Fonts' },
+  { id: 'font-bebas', slot: 'name_font', name: 'Bebas Neue', desc: 'Tall uppercase display', price: 25, preview: '#E5E7EB', font: "'Bebas Neue', sans-serif", category: 'Fonts' },
+  { id: 'font-permanent', slot: 'name_font', name: 'Permanent Marker', desc: 'Hand-drawn marker', price: 40, preview: '#E5E7EB', font: "'Permanent Marker', cursive", category: 'Fonts' },
+  { id: 'font-caveat', slot: 'name_font', name: 'Caveat', desc: 'Natural handwriting', price: 25, preview: '#E5E7EB', font: "'Caveat', cursive", category: 'Fonts' },
+  { id: 'font-monoton', slot: 'name_font', name: 'Monoton', desc: 'Retro neon outline', price: 50, preview: '#E5E7EB', font: "'Monoton', display", category: 'Fonts' },
+  { id: 'font-orbitron', slot: 'name_font', name: 'Orbitron', desc: 'Futuristic sci-fi font', price: 40, preview: '#E5E7EB', font: "'Orbitron', sans-serif", category: 'Fonts' },
+  { id: 'font-press-start', slot: 'name_font', name: 'Press Start 2P', desc: '8-bit pixel font', price: 45, preview: '#E5E7EB', font: "'Press Start 2P', monospace", category: 'Fonts' },
+  { id: 'font-cinzel', slot: 'name_font', name: 'Cinzel', desc: 'Classical Roman style', price: 35, preview: '#E5E7EB', font: "'Cinzel', serif", category: 'Fonts' },
+  { id: 'font-comfortaa', slot: 'name_font', name: 'Comfortaa', desc: 'Rounded modern font', price: 25, preview: '#E5E7EB', font: "'Comfortaa', sans-serif", category: 'Fonts' },
+  { id: 'font-abril', slot: 'name_font', name: 'Abril Fatface', desc: 'Bold display serif', price: 35, preview: '#E5E7EB', font: "'Abril Fatface', serif", category: 'Fonts' },
+  { id: 'font-russo', slot: 'name_font', name: 'Russo One', desc: 'Bold geometric style', price: 30, preview: '#E5E7EB', font: "'Russo One', sans-serif", category: 'Fonts' },
+  { id: 'font-sacramento', slot: 'name_font', name: 'Sacramento', desc: 'Thin elegant script', price: 30, preview: '#E5E7EB', font: "'Sacramento', cursive", category: 'Fonts' },
+  { id: 'font-quicksand', slot: 'name_font', name: 'Quicksand', desc: 'Light rounded sans', price: 20, preview: '#E5E7EB', font: "'Quicksand', sans-serif", category: 'Fonts' },
+  { id: 'font-audiowide', slot: 'name_font', name: 'Audiowide', desc: 'Wide tech display', price: 35, preview: '#E5E7EB', font: "'Audiowide', display", category: 'Fonts' },
+  { id: 'font-bangers', slot: 'name_font', name: 'Bangers', desc: 'Comic book style', price: 30, preview: '#E5E7EB', font: "'Bangers', cursive", category: 'Fonts' },
+  { id: 'font-creepster', slot: 'name_font', name: 'Creepster', desc: 'Spooky horror font', price: 40, preview: '#E5E7EB', font: "'Creepster', display", category: 'Fonts' },
+  { id: 'font-fredoka', slot: 'name_font', name: 'Fredoka One', desc: 'Friendly rounded bold', price: 25, preview: '#E5E7EB', font: "'Fredoka One', sans-serif", category: 'Fonts' },
+  { id: 'font-satisfy', slot: 'name_font', name: 'Satisfy', desc: 'Smooth brush script', price: 30, preview: '#E5E7EB', font: "'Satisfy', cursive", category: 'Fonts' },
+  { id: 'font-special-elite', slot: 'name_font', name: 'Special Elite', desc: 'Vintage typewriter', price: 35, preview: '#E5E7EB', font: "'Special Elite', cursive", category: 'Fonts' },
 ];
 
 function renderShop() {
@@ -1736,6 +2150,8 @@ function renderShop() {
     ? (previewNameColorItem.preview.startsWith('linear') ? `background:${previewNameColorItem.preview};-webkit-background-clip:text;-webkit-text-fill-color:transparent;background-size:200% 200%;animation:gradientShift 3s ease infinite;` : `color:${previewNameColorItem.preview};`)
     : '';
   const previewTitleItem = decor.title ? SHOP_ITEMS.find(i => i.id === decor.title) : null;
+  const previewFontItem = decor.name_font ? SHOP_ITEMS.find(i => i.id === decor.name_font) : null;
+  const previewFontStyle = previewFontItem ? `font-family:${previewFontItem.font};` : '';
 
   el.innerHTML = `
     <div class="shop-balance">
@@ -1753,17 +2169,22 @@ function renderShop() {
             : `<div class="avatar avatar-lg" style="${previewFrame}"><span class="avatar-initials" style="font-size:20px;">${myInitials}</span></div>`
           }
           <div>
-            <div style="font-size:16px;font-weight:700;${previewNameStyle}">${escapeHtml(myName)} ${previewBadge}</div>
+            <div style="font-size:16px;font-weight:700;${previewNameStyle}${previewFontStyle}">${escapeHtml(myName)} ${previewBadge}</div>
             <div style="font-size:13px;color:var(--text-muted);">${escapeHtml(myHandle)}${previewTitleItem ? ` <span style="font-size:11px;font-weight:600;color:${previewTitleItem.preview};">${previewTitleItem.name}</span>` : ''}</div>
           </div>
         </div>
       </div>
     </div>
 
+    <div class="shop-filter-tabs">
+      <button class="shop-filter-tab active" onclick="window.diademUI._shopFilter('all',this)">${t('shop_all') || 'All'}</button>
+      ${categories.map(cat => `<button class="shop-filter-tab" onclick="window.diademUI._shopFilter('${cat}',this)">${cat}</button>`).join('')}
+    </div>
+
     <div class="shop-equipped">
       <h3 style="font-size:15px;font-weight:600;margin-bottom:12px;color:var(--text-primary);">${t('shop_equipped')}</h3>
       <div class="shop-equipped-grid">
-        ${['frame', 'banner', 'badge', 'animation', 'bio_style', 'name_color', 'title', 'post_style'].map(slot => {
+        ${['frame', 'banner', 'badge', 'animation', 'bio_style', 'name_color', 'name_font', 'title', 'post_style'].map(slot => {
           const equipped = decor[slot] || null;
           const item = equipped ? SHOP_ITEMS.find(i => i.id === equipped) : null;
           return `<div class="shop-equipped-slot">
@@ -1777,20 +2198,22 @@ function renderShop() {
     ${categories.map(cat => {
       const items = SHOP_ITEMS.filter(i => i.category === cat);
       return `
-        <div class="shop-category">
+        <div class="shop-category" data-shop-cat="${cat}">
           <h3 class="shop-category-title">${cat}</h3>
           <div class="shop-grid">
             ${items.map(item => {
               const owned = decor.purchased.has(item.id);
               const equipped = decor[item.slot] === item.id;
               const canAfford = balance >= item.price;
+              const isFontItem = item.slot === 'name_font';
               return `
                 <div class="shop-item${equipped ? ' shop-item-equipped' : ''}${owned ? ' shop-item-owned' : ''}">
-                  <div class="shop-item-preview" style="background:${item.preview};">
+                  <div class="shop-item-preview" style="background:${isFontItem ? 'var(--bg-card)' : item.preview};${isFontItem ? 'display:flex;align-items:center;justify-content:center;' : ''}">
                     ${item.icon ? `<i class="icon-${item.icon}" style="font-size:24px;color:#FFF;"></i>` : ''}
+                    ${isFontItem ? `<span style="font-family:${item.font};font-size:20px;color:var(--text-primary);">Aa</span>` : ''}
                   </div>
                   <div class="shop-item-info">
-                    <div class="shop-item-name">${item.name}</div>
+                    <div class="shop-item-name"${isFontItem ? ` style="font-family:${item.font};"` : ''}>${item.name}</div>
                     <div class="shop-item-desc">${item.desc}</div>
                     <div class="shop-item-footer">
                       ${owned
@@ -1839,6 +2262,18 @@ function renderSettingsData() {
 window.diademUI = {
   navigate,
 
+  _shopFilter(category, btn) {
+    document.querySelectorAll('.shop-filter-tab').forEach(t => t.classList.remove('active'));
+    btn.classList.add('active');
+    document.querySelectorAll('.shop-category').forEach(el => {
+      if (category === 'all') {
+        el.style.display = '';
+      } else {
+        el.style.display = el.dataset.shopCat === category ? '' : 'none';
+      }
+    });
+  },
+
   async likePost(postId) {
     try {
       const likes = node.blockchain.state.likes.get(postId) || new Set();
@@ -1852,6 +2287,15 @@ window.diademUI = {
     } catch (e) {
       showToast(e.message, 'error');
     }
+  },
+
+  async repostPost(postId) {
+    try {
+      const reposts = node.blockchain.state.reposts.get(postId) || new Set();
+      const isReposted = reposts.has(node.wallet?.address);
+      await node.repostPost(postId);
+      showToast(isReposted ? t('repost_removed') : t('reposted'), 'success', 1500);
+    } catch (e) { showToast(e.message, 'error'); }
   },
 
   async deletePost(postId) {
@@ -1869,9 +2313,15 @@ window.diademUI = {
     const balance = node.getBalance();
     if (balance < 1) { showToast('Not enough DDM! Need at least 1 DDM to post.', 'error'); return; }
     try {
-      await node.createPost(textarea.value.trim(), _composeImageData || null);
+      const media = _composeImageList.length > 0 ? _composeImageList[0] : (_composeImageData || null);
+      const options = {};
+      if (_composeImageList.length > 1) options.mediaList = _composeImageList;
+      if (_composeSpoiler && (_composeImageList.length > 0 || _composeImageData)) options.spoilerMedia = true;
+      await node.createPost(textarea.value.trim(), media, options);
       textarea.value = '';
       _composeImageData = null;
+      _composeImageList = [];
+      _composeSpoiler = false;
       const preview = document.getElementById('compose-image-preview');
       if (preview) preview.style.display = 'none';
       document.getElementById('compose-modal').classList.remove('active');
@@ -1925,6 +2375,10 @@ window.diademUI = {
     if (_pendingAvatarData) {
       profileData.avatar = _pendingAvatarData;
       _pendingAvatarData = null;
+    }
+    if (_pendingBannerData) {
+      profileData.banner = _pendingBannerData;
+      _pendingBannerData = null;
     }
     try {
       await node.updateProfile(profileData);
@@ -2006,6 +2460,11 @@ window.diademUI = {
       try {
         await node.deleteReply(replyId, parentId);
         showToast('Reply deleted', 'success');
+        if (_currentPostId) renderSinglePost(_currentPostId);
+        else if (_currentProfileAddr || location.hash.startsWith('#profile')) {
+          const addr = _currentProfileAddr || node.wallet?.address;
+          if (addr) this._profileTab(addr, 'replies');
+        }
       } catch (e) { showToast(e.message, 'error'); }
     });
   },
@@ -2298,25 +2757,91 @@ window.diademUI = {
   async previewAvatar(input) {
     if (!input.files?.[0]) return;
     try {
-      _pendingAvatarData = await resizeImage(input.files[0], 256, 256);
+      const result = await showImageEditor(input.files[0], { cropW: 256, cropH: 256, shape: 'circle', title: 'Edit Avatar' });
+      if (!result) { input.value = ''; return; }
+      _pendingAvatarData = result;
       const preview = document.getElementById('edit-avatar-preview');
       if (preview) preview.innerHTML = `<img src="${_pendingAvatarData}" alt="">`;
     } catch (e) { showToast('Failed to load image', 'error'); }
+    input.value = '';
+  },
+
+  async previewBanner(input) {
+    if (!input.files?.[0]) return;
+    try {
+      const result = await showImageEditor(input.files[0], { cropW: 1200, cropH: 400, shape: 'rect', title: 'Edit Banner' });
+      if (!result) { input.value = ''; return; }
+      _pendingBannerData = result;
+      const preview = document.getElementById('edit-banner-preview');
+      if (preview) {
+        preview.style.backgroundImage = `url(${_pendingBannerData})`;
+        preview.style.backgroundSize = 'cover';
+        preview.style.backgroundPosition = 'center';
+        const hint = document.getElementById('edit-banner-hint');
+        if (hint) hint.style.display = 'none';
+      }
+    } catch (e) { showToast('Failed to load image', 'error'); }
+    input.value = '';
   },
 
   async previewComposeImage(input) {
-    if (!input.files?.[0]) return;
+    if (!input.files) return;
     try {
-      _composeImageData = await resizeImage(input.files[0], 800, 600);
-      const thumb = document.getElementById('compose-image-thumb');
-      const preview = document.getElementById('compose-image-preview');
-      if (thumb) thumb.src = _composeImageData;
-      if (preview) preview.style.display = 'block';
+      for (const file of input.files) {
+        if (_composeImageList.length >= 4) break;
+        const data = await resizeImage(file, 800, 600);
+        _composeImageList.push(data);
+      }
+      _composeImageData = _composeImageList[0] || null;
+      this._updateComposePreview();
     } catch (e) { showToast('Failed to load image', 'error'); }
+  },
+
+  _updateComposePreview() {
+    const preview = document.getElementById('compose-image-preview');
+    if (!preview) return;
+    if (_composeImageList.length === 0) { preview.style.display = 'none'; return; }
+    preview.style.display = 'block';
+    preview.innerHTML = `
+      <div style="display:grid;grid-template-columns:repeat(${Math.min(_composeImageList.length, 2)}, 1fr);gap:6px;position:relative;">
+        ${_composeImageList.map((src, i) => `
+          <div style="position:relative;">
+            <img src="${src}" style="width:100%;height:${_composeImageList.length === 1 ? '200' : '120'}px;object-fit:cover;border-radius:10px;border:1px solid var(--divider);">
+            <button style="position:absolute;top:4px;right:4px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:22px;height:22px;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:12px;" onclick="window.diademUI._removeComposeImageAt(${i})"><i class="icon-x" style="font-size:11px;"></i></button>
+          </div>`).join('')}
+      </div>
+      <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;font-size:12px;color:var(--text-muted);">
+        <input type="checkbox" ${_composeSpoiler ? 'checked' : ''} onchange="window.diademUI._toggleSpoiler(this.checked)"> Spoiler
+      </label>
+      ${_composeImageList.length < 4 ? `<button class="post-action" style="margin-top:4px;font-size:11px;" onclick="document.getElementById('compose-image-input').click()"><i class="icon-image" style="font-size:13px;"></i> +</button>` : ''}
+    `;
+  },
+
+  _removeComposeImageAt(index) {
+    _composeImageList.splice(index, 1);
+    _composeImageData = _composeImageList[0] || null;
+    this._updateComposePreview();
+  },
+
+  _toggleSpoiler(checked) {
+    _composeSpoiler = checked;
+  },
+
+  _insertFormat(before, after) {
+    const ta = document.getElementById('compose-text');
+    if (!ta) return;
+    const start = ta.selectionStart;
+    const end = ta.selectionEnd;
+    const selected = ta.value.slice(start, end);
+    const replacement = before + (selected || 'text') + after;
+    ta.setRangeText(replacement, start, end, 'select');
+    ta.focus();
   },
 
   removeComposeImage() {
     _composeImageData = null;
+    _composeImageList = [];
+    _composeSpoiler = false;
     const preview = document.getElementById('compose-image-preview');
     if (preview) preview.style.display = 'none';
   },
@@ -2361,11 +2886,22 @@ window.diademUI = {
   },
 
   _profileTab(address, tab, btnEl) {
+    _currentProfileTab = tab;
     // Update active tab button
-    const tabsContainer = btnEl.closest('.tabs');
-    if (tabsContainer) {
-      tabsContainer.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
-      btnEl.classList.add('active');
+    if (btnEl) {
+      const tabsContainer = btnEl.closest('.tabs');
+      if (tabsContainer) {
+        tabsContainer.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+        btnEl.classList.add('active');
+      }
+    } else {
+      // Called programmatically — find and highlight the right tab button
+      const tabsContainer = document.querySelector('#page-profile .tabs, #page-other-profile .tabs');
+      if (tabsContainer) {
+        const buttons = tabsContainer.querySelectorAll('.tab');
+        const tabNames = ['posts', 'replies', 'media', 'likes', 'stats', 'stories'];
+        buttons.forEach((b, i) => b.classList.toggle('active', tabNames[i] === tab));
+      }
     }
     const contentEl = document.getElementById('profile-tab-content');
     if (!contentEl) return;
@@ -2418,6 +2954,7 @@ window.diademUI = {
               <div class="post-content">${escapeHtml(r.content)}</div>
               <div class="post-actions">
                 <button class="post-action${r.liked}" onclick="event.stopPropagation();window.diademUI.likePost('${r.id}')"><i class="icon-heart"></i> ${r.likesCount}</button>
+                ${r.author === myAddr ? `<button class="post-action" onclick="event.stopPropagation();window.diademUI.deleteReply('${r.id}','${r.parentPostId}')" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
               </div>
             </div>`;
         }).join('');
@@ -2452,6 +2989,280 @@ window.diademUI = {
       } else {
         contentEl.innerHTML = likedPosts.map(p => renderPost(p)).join('');
       }
+    } else if (tab === 'stats') {
+      // ── Gather all statistics ──
+      const allPosts = node.getUserPosts(address).filter(p => !p.repostedBy);
+      const totalPosts = allPosts.length;
+
+      // Total likes received
+      let totalLikesReceived = 0;
+      const postLikes = [];
+      for (const p of allPosts) {
+        const ls = node.blockchain.state.likes.get(p.id) || new Set();
+        totalLikesReceived += ls.size;
+        postLikes.push({ ...p, lc: ls.size });
+      }
+
+      // Total likes given
+      let totalLikesGiven = 0;
+      for (const [, likers] of node.blockchain.state.likes) {
+        if (likers.has(address)) totalLikesGiven++;
+      }
+
+      // Replies count
+      let totalReplies = 0;
+      let repliesReceived = 0;
+      for (const [postId, replies] of node.blockchain.state.replies) {
+        for (const r of replies) {
+          if (r.author === address) totalReplies++;
+        }
+        const parentPost = node.blockchain.state.posts.get(postId);
+        if (parentPost && parentPost.author === address) {
+          repliesReceived += replies.length;
+        }
+      }
+
+      // Reposts
+      let totalReposts = 0;
+      for (const [, repostSet] of node.blockchain.state.reposts) {
+        if (repostSet.has(address)) totalReposts++;
+      }
+
+      // Reposts received (others reposted this user's posts)
+      let repostsReceived = 0;
+      for (const p of allPosts) {
+        const rs = node.blockchain.state.reposts.get(p.id);
+        if (rs) repostsReceived += rs.size;
+      }
+
+      // Followers / following
+      const followersSet = node.blockchain.state.followers.get(address) || new Set();
+      const followingSet = node.blockchain.state.following.get(address) || new Set();
+
+      // Reputation
+      const rep = node.getReputation(address);
+      const repProg = getRepProgress(rep.score);
+
+      // Top posts by likes
+      const topPosts = [...postLikes].sort((a, b) => b.lc - a.lc).slice(0, 5);
+
+      // Top posts by reposts
+      const topReposted = allPosts.map(p => {
+        const rs = node.blockchain.state.reposts.get(p.id);
+        return { ...p, rc: rs ? rs.size : 0 };
+      }).filter(p => p.rc > 0).sort((a, b) => b.rc - a.rc).slice(0, 5);
+
+      // Average likes per post
+      const avgLikes = totalPosts > 0 ? (totalLikesReceived / totalPosts).toFixed(1) : '0';
+
+      // Activity timeline (posts per day for last 7 days)
+      const now = Date.now();
+      const dayMs = 86400000;
+      const days = [];
+      for (let i = 6; i >= 0; i--) {
+        const dayStart = now - i * dayMs;
+        const dayEnd = dayStart + dayMs;
+        const count = allPosts.filter(p => p.timestamp >= dayStart && p.timestamp < dayEnd).length;
+        const d = new Date(dayStart);
+        days.push({ label: `${d.getDate()}.${d.getMonth() + 1}`, count });
+      }
+      const maxDay = Math.max(1, ...days.map(d => d.count));
+
+      // Engagement rate (likes + replies received per post)
+      const engRate = totalPosts > 0 ? ((totalLikesReceived + repliesReceived) / totalPosts).toFixed(1) : '0';
+
+      // Build follower list with reputation
+      const followersList = [...followersSet].map(addr => {
+        const prof = node.getProfile(addr) || {};
+        const fRep = node.getReputation(addr);
+        const fProg = getRepProgress(fRep.score);
+        return { address: addr, profile: prof, rep: fRep, level: fProg.cur.level };
+      }).sort((a, b) => b.rep.score - a.rep.score);
+
+      contentEl.innerHTML = `
+        <div style="padding:20px 0;">
+          <!-- Overview Cards -->
+          <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:12px;margin-bottom:24px;">
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${totalPosts}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_total_posts')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#EF4444;">${totalLikesReceived}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_likes_received')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#3B82F6;">${totalLikesGiven}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_likes_given')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#8B5CF6;">${totalReplies}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_replies_sent')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#22C55E;">${repliesReceived}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_replies_received')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#F59E0B;">${totalReposts}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_reposts_made')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:#EC4899;">${repostsReceived}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('stats_reposts_received')}</div>
+            </div>
+            <div style="background:var(--bg-secondary);border-radius:12px;padding:16px;text-align:center;">
+              <div style="font-size:24px;font-weight:700;color:var(--text-primary);">${followersSet.size}</div>
+              <div style="font-size:12px;color:var(--text-muted);margin-top:4px;">${t('profile_followers')}</div>
+            </div>
+          </div>
+
+          <!-- Engagement Stats -->
+          <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 0 16px;">${t('stats_engagement')}</h3>
+            <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:16px;">
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">${t('stats_avg_likes')}</div>
+                <div style="font-size:20px;font-weight:700;color:var(--text-primary);margin-top:4px;">${avgLikes}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">${t('stats_eng_rate')}</div>
+                <div style="font-size:20px;font-weight:700;color:var(--text-primary);margin-top:4px;">${engRate}</div>
+              </div>
+              <div>
+                <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">${t('stats_reputation')}</div>
+                <div style="font-size:20px;font-weight:700;margin-top:4px;color:${LEVEL_COLORS[repProg.cur.level] || '#888'};">${rep.score} · ${repProg.cur.level}</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Activity Chart (last 7 days) -->
+          <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 0 16px;">${t('stats_activity')}</h3>
+            <div style="display:flex;align-items:flex-end;gap:8px;height:100px;">
+              ${days.map(d => `
+                <div style="flex:1;display:flex;flex-direction:column;align-items:center;gap:4px;">
+                  <div style="font-size:10px;color:var(--text-muted);">${d.count}</div>
+                  <div style="width:100%;background:var(--btn-primary-bg);border-radius:4px;height:${Math.max(4, (d.count / maxDay) * 80)}px;transition:height 0.3s;"></div>
+                  <div style="font-size:10px;color:var(--text-muted);">${d.label}</div>
+                </div>
+              `).join('')}
+            </div>
+          </div>
+
+          <!-- Top Posts by Likes -->
+          ${topPosts.length > 0 ? `
+          <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 0 16px;">${t('stats_top_liked')}</h3>
+            ${topPosts.map((p, i) => `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 0;${i < topPosts.length - 1 ? 'border-bottom:1px solid var(--divider);' : ''}cursor:pointer;" onclick="window.diademUI.viewPost('${p.id}')">
+                <div style="font-size:16px;font-weight:700;color:var(--text-muted);width:24px;text-align:center;">${i + 1}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.content?.slice(0, 80) || '')}</div>
+                  <div style="font-size:11px;color:var(--text-muted);margin-top:2px;">${formatTimeAgo(p.timestamp)}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;color:#EF4444;font-size:13px;font-weight:600;">
+                  <i class="icon-heart" style="font-size:14px;"></i> ${p.lc}
+                </div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+
+          <!-- Top Reposted Posts -->
+          ${topReposted.length > 0 ? `
+          <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;margin-bottom:24px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 0 16px;">${t('stats_top_shared')}</h3>
+            ${topReposted.map((p, i) => `
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 0;${i < topReposted.length - 1 ? 'border-bottom:1px solid var(--divider);' : ''}cursor:pointer;" onclick="window.diademUI.viewPost('${p.id}')">
+                <div style="font-size:16px;font-weight:700;color:var(--text-muted);width:24px;text-align:center;">${i + 1}</div>
+                <div style="flex:1;min-width:0;">
+                  <div style="font-size:13px;color:var(--text-primary);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(p.content?.slice(0, 80) || '')}</div>
+                </div>
+                <div style="display:flex;align-items:center;gap:4px;color:#22C55E;font-size:13px;font-weight:600;">
+                  <i class="icon-repeat" style="font-size:14px;"></i> ${p.rc}
+                </div>
+              </div>
+            `).join('')}
+          </div>` : ''}
+
+          <!-- Followers with Status -->
+          <div style="background:var(--bg-secondary);border-radius:12px;padding:20px;">
+            <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin:0 0 16px;">${t('stats_followers_list')} (${followersList.length})</h3>
+            ${followersList.length === 0 ? `<div style="text-align:center;color:var(--text-muted);font-size:13px;padding:20px 0;">${t('stats_no_followers')}</div>` :
+              followersList.slice(0, 20).map(f => {
+                const fn = f.profile.name || f.address.slice(0, 10) + '...';
+                const fh = f.profile.handle || f.address.slice(0, 12);
+                const fAvatar = f.profile.avatar ? `<img src="${f.profile.avatar}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;">` : `<div style="width:36px;height:36px;border-radius:50%;background:var(--divider);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;color:var(--text-muted);">${fn[0]?.toUpperCase() || '?'}</div>`;
+                return `
+                <div style="display:flex;align-items:center;gap:12px;padding:8px 0;cursor:pointer;" onclick="location.hash='#profile/${f.address}'">
+                  ${fAvatar}
+                  <div style="flex:1;min-width:0;">
+                    <div style="font-size:13px;font-weight:600;color:var(--text-primary);">${escapeHtml(fn)}</div>
+                    <div style="font-size:11px;color:var(--text-muted);">${escapeHtml(fh)}</div>
+                  </div>
+                  <div style="font-size:11px;font-weight:600;color:${LEVEL_COLORS[f.level] || '#888'};background:${LEVEL_COLORS[f.level] || '#888'}18;padding:3px 8px;border-radius:6px;">${f.level}</div>
+                </div>`;
+              }).join('')}
+            ${followersList.length > 20 ? `<div style="text-align:center;color:var(--text-muted);font-size:12px;padding-top:12px;">+${followersList.length - 20} more</div>` : ''}
+          </div>
+        </div>
+      `;
+    } else if (tab === 'stories') {
+      const allStories = node.getAllStories(address);
+      const now = Date.now();
+      const isOwn = address === myAddr;
+
+      if (allStories.length === 0) {
+        contentEl.innerHTML = `<div class="text-muted" style="text-align:center;padding:40px;">
+          ${isOwn ? `<i class="icon-camera" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.4;"></i>
+          <p>No stories yet</p>
+          <button class="btn btn-primary" style="margin-top:12px;border-radius:18px;" onclick="window.diademUI.createStory()">${t('stories_add')}</button>` : 'No stories yet'}
+        </div>`;
+      } else {
+        const active = allStories.filter(s => {
+          if (s.duration === 0) return true;
+          return now < s.timestamp + (s.duration || 24) * 3600000;
+        });
+        const archived = allStories.filter(s => {
+          if (s.duration === 0) return false;
+          return now >= s.timestamp + (s.duration || 24) * 3600000;
+        });
+
+        contentEl.innerHTML = `
+          <div style="padding:20px 0;">
+            ${isOwn ? `<div style="margin-bottom:16px;"><button class="btn btn-primary" style="border-radius:18px;" onclick="window.diademUI.createStory()"><i class="icon-plus" style="margin-right:6px;"></i>${t('stories_add')}</button></div>` : ''}
+
+            ${active.length > 0 ? `
+              <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Active Stories (${active.length})</h3>
+              <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:24px;">
+                ${active.map(s => `
+                  <div class="story-grid-item" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;cursor:pointer;background:#111;" onclick="window.diademUI.viewStory('${address}')">
+                    <img src="${s.image}" style="width:100%;height:100%;object-fit:cover;">
+                    ${s.text ? `<div style="position:absolute;bottom:8px;left:8px;right:8px;font-size:11px;color:#FFF;text-shadow:0 1px 4px rgba(0,0,0,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(s.text)}</div>` : ''}
+                    <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${formatTimeAgo(s.timestamp)}</div>
+                    ${isOwn && !s.hidden ? `<button style="position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.5);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.hideStory('${address}','${s.id}')" title="Hide"><i class="icon-eye-off" style="font-size:11px;"></i></button>` : ''}
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+
+            ${archived.length > 0 ? `
+              <h3 style="font-size:14px;font-weight:600;color:var(--text-muted);margin-bottom:12px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'grid':'none';this.querySelector('i').style.transform=this.nextElementSibling.style.display==='none'?'':'rotate(90deg)'">
+                <i class="icon-chevron-right" style="font-size:14px;margin-right:4px;transition:transform 0.2s;"></i>
+                Archive (${archived.length})
+              </h3>
+              <div style="display:none;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
+                ${archived.map(s => `
+                  <div class="story-grid-item" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:#111;opacity:0.6;">
+                    <img src="${s.image}" style="width:100%;height:100%;object-fit:cover;">
+                    <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${t('stories_expired')}</div>
+                  </div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        `;
+      }
     }
   },
 
@@ -2471,6 +3282,465 @@ window.diademUI = {
       const close = (e) => { if (!picker.contains(e.target)) { picker.remove(); document.removeEventListener('click', close); } };
       document.addEventListener('click', close);
     }, 10);
+  },
+
+  // ── Stories ──
+  createStory() {
+    const FILTERS = [
+      { name: 'None', css: '' },
+      { name: 'Warm', css: 'sepia(0.3) saturate(1.4) brightness(1.1)' },
+      { name: 'Cool', css: 'saturate(0.8) hue-rotate(20deg) brightness(1.05)' },
+      { name: 'B&W', css: 'grayscale(1) contrast(1.1)' },
+      { name: 'Vintage', css: 'sepia(0.5) contrast(0.9) brightness(1.1)' },
+      { name: 'Drama', css: 'contrast(1.4) saturate(1.2) brightness(0.95)' },
+      { name: 'Fade', css: 'contrast(0.8) brightness(1.15) saturate(0.7)' },
+      { name: 'Vivid', css: 'saturate(1.8) contrast(1.1)' },
+    ];
+    const STICKERS = ['🔥', '❤️', '😂', '🎉', '💎', '🚀', '⭐', '🎵', '👑', '💰', '🌈', '✨', '🎯', '💪', '🌟', '🎮'];
+    const TEXT_STYLES = [
+      { name: 'Classic', bg: 'rgba(0,0,0,0.6)', color: '#FFF', font: 'inherit' },
+      { name: 'Neon', bg: 'transparent', color: '#0FF', font: 'inherit', shadow: '0 0 10px #0FF,0 0 20px #0FF' },
+      { name: 'Bold', bg: '#FFF', color: '#000', font: 'inherit', weight: '900' },
+      { name: 'Retro', bg: 'linear-gradient(135deg,#f093fb,#f5576c)', color: '#FFF', font: 'inherit' },
+      { name: 'Glitch', bg: 'rgba(255,0,0,0.3)', color: '#0F0', font: 'monospace' },
+    ];
+
+    const overlay = document.createElement('div');
+    overlay.className = 'story-editor-overlay';
+    overlay.innerHTML = `
+      <div class="story-editor">
+        <div class="story-editor-header">
+          <button class="story-editor-btn" onclick="this.closest('.story-editor-overlay').remove()"><i class="icon-x"></i></button>
+          <span style="font-weight:700;font-size:16px;">Create Story</span>
+          <button class="story-editor-btn story-editor-publish" id="_se-publish" disabled><i class="icon-send"></i></button>
+        </div>
+        <div class="story-editor-canvas-wrap" id="_se-canvas-wrap">
+          <canvas id="_se-canvas" width="1080" height="1920"></canvas>
+          <div id="_se-placeholder" style="position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:#555;cursor:pointer;" onclick="document.getElementById('_se-file').click()">
+            <div style="text-align:center;">
+              <i class="icon-image" style="font-size:56px;display:block;margin-bottom:16px;"></i>
+              <span style="font-size:15px;">Tap to add photo or video</span>
+            </div>
+          </div>
+          <input type="file" id="_se-file" accept="image/*,video/*" style="display:none;">
+          <div id="_se-text-layers" style="position:absolute;inset:0;pointer-events:none;"></div>
+          <div id="_se-sticker-layers" style="position:absolute;inset:0;pointer-events:none;"></div>
+        </div>
+        <div class="story-editor-toolbar">
+          <button class="story-tool" data-tool="text" title="Add Text"><i class="icon-type"></i></button>
+          <button class="story-tool" data-tool="sticker" title="Stickers"><i class="icon-smile"></i></button>
+          <button class="story-tool" data-tool="draw" title="Draw"><i class="icon-edit-3"></i></button>
+          <button class="story-tool" data-tool="filter" title="Filters"><i class="icon-sliders"></i></button>
+          <button class="story-tool" data-tool="music" title="Music"><i class="icon-music"></i></button>
+          <button class="story-tool" data-tool="duration" title="Duration"><i class="icon-clock"></i></button>
+        </div>
+        <div class="story-editor-panel" id="_se-panel" style="display:none;"></div>
+      </div>
+    `;
+    document.body.appendChild(overlay);
+
+    const canvas = overlay.querySelector('#_se-canvas');
+    const ctx = canvas.getContext('2d');
+    const placeholder = overlay.querySelector('#_se-placeholder');
+    const publishBtn = overlay.querySelector('#_se-publish');
+    const panel = overlay.querySelector('#_se-panel');
+    const textLayers = overlay.querySelector('#_se-text-layers');
+    const stickerLayers = overlay.querySelector('#_se-sticker-layers');
+
+    let baseImage = null;
+    let currentFilter = 0;
+    let textOverlays = [];
+    let stickerOverlays = [];
+    let drawingData = [];
+    let isDrawing = false;
+    let drawColor = '#FFFFFF';
+    let drawWidth = 4;
+    let storyDuration = 24; // hours, 0 = permanent
+
+    function redrawCanvas() {
+      ctx.clearRect(0, 0, 1080, 1920);
+      ctx.fillStyle = '#111';
+      ctx.fillRect(0, 0, 1080, 1920);
+      if (baseImage) {
+        ctx.filter = FILTERS[currentFilter].css || 'none';
+        const scale = Math.max(1080 / baseImage.naturalWidth, 1920 / baseImage.naturalHeight);
+        const w = baseImage.naturalWidth * scale;
+        const h = baseImage.naturalHeight * scale;
+        ctx.drawImage(baseImage, (1080 - w) / 2, (1920 - h) / 2, w, h);
+        ctx.filter = 'none';
+      }
+      // Draw strokes
+      for (const stroke of drawingData) {
+        if (stroke.points.length < 2) continue;
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.lineWidth = stroke.width * 3;
+        ctx.lineCap = 'round';
+        ctx.lineJoin = 'round';
+        ctx.moveTo(stroke.points[0].x * 1080, stroke.points[0].y * 1920);
+        for (let i = 1; i < stroke.points.length; i++) {
+          ctx.lineTo(stroke.points[i].x * 1080, stroke.points[i].y * 1920);
+        }
+        ctx.stroke();
+      }
+      // Draw text overlays
+      for (const t of textOverlays) {
+        const style = TEXT_STYLES[t.styleIdx || 0];
+        ctx.save();
+        const fontSize = (t.size || 32) * 3;
+        ctx.font = `${style.weight || '600'} ${fontSize}px ${style.font || 'sans-serif'}`;
+        ctx.textAlign = 'center';
+        const tx = t.x * 1080;
+        const ty = t.y * 1920;
+        const metrics = ctx.measureText(t.text);
+        const tw = metrics.width + 40;
+        const th = fontSize + 30;
+        if (style.bg && style.bg !== 'transparent') {
+          if (style.bg.startsWith('linear')) {
+            ctx.fillStyle = style.color === '#000' ? '#FFF' : 'rgba(0,0,0,0.6)';
+          } else {
+            ctx.fillStyle = style.bg;
+          }
+          ctx.beginPath();
+          ctx.roundRect(tx - tw / 2, ty - th / 2, tw, th, 12);
+          ctx.fill();
+        }
+        if (style.shadow) {
+          ctx.shadowColor = style.color;
+          ctx.shadowBlur = 20;
+        }
+        ctx.fillStyle = style.color;
+        ctx.fillText(t.text, tx, ty + fontSize / 3);
+        ctx.restore();
+      }
+      // Draw stickers
+      for (const s of stickerOverlays) {
+        ctx.font = `${(s.size || 48) * 3}px serif`;
+        ctx.textAlign = 'center';
+        ctx.fillText(s.emoji, s.x * 1080, s.y * 1920);
+      }
+    }
+
+    function updateOverlayElements() {
+      const wrap = overlay.querySelector('#_se-canvas-wrap');
+      const rect = wrap.getBoundingClientRect();
+      textLayers.innerHTML = textOverlays.map((t, i) => {
+        const style = TEXT_STYLES[t.styleIdx || 0];
+        return `<div class="story-text-overlay" data-idx="${i}" style="left:${t.x * 100}%;top:${t.y * 100}%;transform:translate(-50%,-50%);pointer-events:auto;cursor:grab;
+          background:${style.bg || 'rgba(0,0,0,0.6)'};color:${style.color};font-family:${style.font || 'inherit'};font-weight:${style.weight || '600'};
+          ${style.shadow ? 'text-shadow:' + style.shadow + ';' : ''}
+          padding:6px 14px;border-radius:8px;font-size:${t.size || 16}px;white-space:nowrap;user-select:none;position:absolute;">
+          ${escapeHtml(t.text)}
+          <button style="position:absolute;top:-8px;right:-8px;width:18px;height:18px;border-radius:50%;background:#F00;border:none;color:#FFF;font-size:10px;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;" onclick="event.stopPropagation();window._seRemoveText(${i})">×</button>
+        </div>`;
+      }).join('');
+      stickerLayers.innerHTML = stickerOverlays.map((s, i) => {
+        return `<div class="story-sticker-overlay" data-idx="${i}" style="left:${s.x * 100}%;top:${s.y * 100}%;transform:translate(-50%,-50%);pointer-events:auto;cursor:grab;font-size:${s.size || 32}px;position:absolute;user-select:none;">
+          ${s.emoji}
+          <button style="position:absolute;top:-6px;right:-6px;width:16px;height:16px;border-radius:50%;background:#F00;border:none;color:#FFF;font-size:9px;cursor:pointer;display:flex;align-items:center;justify-content:center;pointer-events:auto;" onclick="event.stopPropagation();window._seRemoveSticker(${i})">×</button>
+        </div>`;
+      }).join('');
+      // Make text/sticker draggable
+      textLayers.querySelectorAll('.story-text-overlay').forEach(el => makeDraggable(el, textOverlays, 'text'));
+      stickerLayers.querySelectorAll('.story-sticker-overlay').forEach(el => makeDraggable(el, stickerOverlays, 'sticker'));
+    }
+
+    function makeDraggable(el, arr, type) {
+      let startX, startY, origX, origY;
+      const idx = parseInt(el.dataset.idx);
+      const onMove = (e) => {
+        e.preventDefault();
+        const wrap = overlay.querySelector('#_se-canvas-wrap');
+        const rect = wrap.getBoundingClientRect();
+        const cx = (e.touches ? e.touches[0].clientX : e.clientX);
+        const cy = (e.touches ? e.touches[0].clientY : e.clientY);
+        arr[idx].x = Math.max(0.05, Math.min(0.95, (cx - rect.left) / rect.width));
+        arr[idx].y = Math.max(0.05, Math.min(0.95, (cy - rect.top) / rect.height));
+        el.style.left = arr[idx].x * 100 + '%';
+        el.style.top = arr[idx].y * 100 + '%';
+      };
+      const onUp = () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); document.removeEventListener('touchmove', onMove); document.removeEventListener('touchend', onUp); redrawCanvas(); };
+      el.addEventListener('mousedown', (e) => { if (e.target.tagName === 'BUTTON') return; e.preventDefault(); document.addEventListener('mousemove', onMove); document.addEventListener('mouseup', onUp); });
+      el.addEventListener('touchstart', (e) => { if (e.target.tagName === 'BUTTON') return; document.addEventListener('touchmove', onMove, { passive: false }); document.addEventListener('touchend', onUp); });
+    }
+
+    window._seRemoveText = (i) => { textOverlays.splice(i, 1); updateOverlayElements(); redrawCanvas(); };
+    window._seRemoveSticker = (i) => { stickerOverlays.splice(i, 1); updateOverlayElements(); redrawCanvas(); };
+
+    // File input
+    overlay.querySelector('#_se-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.type.startsWith('video/')) {
+        const video = document.createElement('video');
+        video.src = URL.createObjectURL(file);
+        video.muted = true;
+        video.addEventListener('loadeddata', () => {
+          video.currentTime = 0;
+          video.addEventListener('seeked', () => {
+            const tmpCanvas = document.createElement('canvas');
+            tmpCanvas.width = video.videoWidth;
+            tmpCanvas.height = video.videoHeight;
+            tmpCanvas.getContext('2d').drawImage(video, 0, 0);
+            const img = new Image();
+            img.onload = () => { baseImage = img; placeholder.style.display = 'none'; publishBtn.disabled = false; redrawCanvas(); };
+            img.src = tmpCanvas.toDataURL('image/jpeg', 0.85);
+          }, { once: true });
+        });
+      } else {
+        const img = new Image();
+        img.onload = () => { baseImage = img; placeholder.style.display = 'none'; publishBtn.disabled = false; redrawCanvas(); };
+        img.src = URL.createObjectURL(file);
+      }
+    });
+
+    // Tool buttons
+    overlay.querySelectorAll('.story-tool').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.dataset.tool;
+        overlay.querySelectorAll('.story-tool').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+
+        if (tool === 'text') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:12px;">
+              <input id="_se-text-input" class="form-input" placeholder="Enter text..." style="width:100%;box-sizing:border-box;margin-bottom:8px;">
+              <div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;">
+                ${TEXT_STYLES.map((s, i) => `<button class="story-style-btn${i === 0 ? ' active' : ''}" data-style="${i}" style="background:${s.bg || '#333'};color:${s.color};border:2px solid ${i === 0 ? 'var(--btn-primary-bg)' : 'transparent'};border-radius:8px;padding:4px 10px;font-size:12px;cursor:pointer;font-weight:${s.weight || '600'};">${s.name}</button>`).join('')}
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <span style="font-size:12px;color:var(--text-muted);">Size</span>
+                <input type="range" id="_se-text-size" min="12" max="48" value="20" style="flex:1;accent-color:var(--btn-primary-bg);">
+                <button class="btn btn-primary" style="border-radius:8px;height:32px;font-size:12px;" id="_se-add-text">Add</button>
+              </div>
+            </div>`;
+          let selStyle = 0;
+          panel.querySelectorAll('.story-style-btn').forEach(sb => {
+            sb.addEventListener('click', () => {
+              panel.querySelectorAll('.story-style-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              sb.classList.add('active');
+              sb.style.borderColor = 'var(--btn-primary-bg)';
+              selStyle = parseInt(sb.dataset.style);
+            });
+          });
+          panel.querySelector('#_se-add-text').addEventListener('click', () => {
+            const val = panel.querySelector('#_se-text-input').value.trim();
+            if (!val) return;
+            const size = parseInt(panel.querySelector('#_se-text-size').value);
+            textOverlays.push({ text: val, x: 0.5, y: 0.5, styleIdx: selStyle, size });
+            updateOverlayElements();
+            redrawCanvas();
+            panel.querySelector('#_se-text-input').value = '';
+          });
+        } else if (tool === 'sticker') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:12px;display:grid;grid-template-columns:repeat(8,1fr);gap:6px;">
+              ${STICKERS.map(s => `<button style="font-size:28px;background:none;border:none;cursor:pointer;padding:6px;border-radius:8px;transition:background 0.15s;" onmouseover="this.style.background='var(--bg-active)'" onmouseout="this.style.background='none'" onclick="window._seAddSticker('${s}')">${s}</button>`).join('')}
+            </div>`;
+          window._seAddSticker = (emoji) => {
+            stickerOverlays.push({ emoji, x: 0.3 + Math.random() * 0.4, y: 0.3 + Math.random() * 0.4, size: 48 });
+            updateOverlayElements();
+            redrawCanvas();
+          };
+        } else if (tool === 'draw') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:12px;">
+              <div style="display:flex;gap:6px;margin-bottom:8px;align-items:center;">
+                <span style="font-size:12px;color:var(--text-muted);">Color</span>
+                ${['#FFFFFF','#FF0000','#00FF00','#0088FF','#FFD700','#FF00FF','#00FFFF','#FF8C00'].map(c => `<button style="width:28px;height:28px;border-radius:50%;background:${c};border:2px solid ${c === drawColor ? '#FFF' : 'transparent'};cursor:pointer;" onclick="window._seDrawColor='${c}';this.parentElement.querySelectorAll('button').forEach(b=>b.style.borderColor='transparent');this.style.borderColor='#FFF'"></button>`).join('')}
+              </div>
+              <div style="display:flex;gap:8px;align-items:center;">
+                <span style="font-size:12px;color:var(--text-muted);">Size</span>
+                <input type="range" min="2" max="20" value="${drawWidth}" style="flex:1;accent-color:var(--btn-primary-bg);" oninput="window._seDrawWidth=parseInt(this.value)">
+                <button class="btn btn-outline" style="border-radius:8px;height:28px;font-size:11px;" onclick="window._seDrawData=[];window._seRedraw()">Clear</button>
+              </div>
+              <div style="font-size:11px;color:var(--text-muted);margin-top:6px;">Draw on the canvas above</div>
+            </div>`;
+          window._seDrawColor = drawColor;
+          window._seDrawWidth = drawWidth;
+          window._seDrawData = drawingData;
+          window._seRedraw = () => { drawingData = window._seDrawData; redrawCanvas(); };
+
+          // Enable drawing on canvas wrap
+          const wrap = overlay.querySelector('#_se-canvas-wrap');
+          const drawHandler = (e) => {
+            if (!btn.classList.contains('active')) return;
+            const rect = wrap.getBoundingClientRect();
+            const cx = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left;
+            const cy = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top;
+            const nx = cx / rect.width;
+            const ny = cy / rect.height;
+            if (e.type === 'mousedown' || e.type === 'touchstart') {
+              isDrawing = true;
+              drawingData.push({ color: window._seDrawColor, width: window._seDrawWidth, points: [{ x: nx, y: ny }] });
+            } else if (isDrawing && (e.type === 'mousemove' || e.type === 'touchmove')) {
+              e.preventDefault();
+              drawingData[drawingData.length - 1].points.push({ x: nx, y: ny });
+              redrawCanvas();
+            } else if (e.type === 'mouseup' || e.type === 'touchend') {
+              isDrawing = false;
+            }
+          };
+          wrap.addEventListener('mousedown', drawHandler);
+          wrap.addEventListener('mousemove', drawHandler);
+          wrap.addEventListener('mouseup', drawHandler);
+          wrap.addEventListener('touchstart', drawHandler);
+          wrap.addEventListener('touchmove', drawHandler, { passive: false });
+          wrap.addEventListener('touchend', drawHandler);
+        } else if (tool === 'filter') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:12px;display:flex;gap:8px;overflow-x:auto;">
+              ${FILTERS.map((f, i) => `<button class="story-filter-btn${i === currentFilter ? ' active' : ''}" style="flex-shrink:0;padding:8px 14px;border-radius:8px;border:2px solid ${i === currentFilter ? 'var(--btn-primary-bg)' : 'transparent'};background:var(--bg-secondary);color:var(--text-primary);font-size:12px;cursor:pointer;" data-filter="${i}">${f.name}</button>`).join('')}
+            </div>`;
+          panel.querySelectorAll('.story-filter-btn').forEach(fb => {
+            fb.addEventListener('click', () => {
+              currentFilter = parseInt(fb.dataset.filter);
+              panel.querySelectorAll('.story-filter-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              fb.classList.add('active');
+              fb.style.borderColor = 'var(--btn-primary-bg)';
+              redrawCanvas();
+            });
+          });
+        } else if (tool === 'music') {
+          panel.style.display = 'block';
+          panel.innerHTML = `
+            <div style="padding:12px;">
+              <div style="font-size:12px;color:var(--text-muted);text-align:center;padding:20px;">
+                <i class="icon-music" style="font-size:24px;display:block;margin-bottom:8px;"></i>
+                Music will be available in future updates.<br>Stories are stored on blockchain.
+              </div>
+            </div>`;
+        } else if (tool === 'duration') {
+          panel.style.display = 'block';
+          const durations = [
+            { label: '6 hours', value: 6 },
+            { label: '12 hours', value: 12 },
+            { label: '24 hours', value: 24 },
+            { label: '48 hours', value: 48 },
+            { label: '7 days', value: 168 },
+            { label: 'Permanent', value: 0 },
+          ];
+          panel.innerHTML = `
+            <div style="padding:12px;">
+              <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:8px;">Story Duration</div>
+              <div style="display:flex;flex-wrap:wrap;gap:6px;">
+                ${durations.map(d => `<button class="story-duration-btn${d.value === storyDuration ? ' active' : ''}" data-dur="${d.value}" style="padding:8px 14px;border-radius:8px;border:2px solid ${d.value === storyDuration ? 'var(--btn-primary-bg)' : 'transparent'};background:var(--bg-secondary);color:var(--text-primary);font-size:12px;cursor:pointer;">${d.label}</button>`).join('')}
+              </div>
+            </div>`;
+          panel.querySelectorAll('.story-duration-btn').forEach(db => {
+            db.addEventListener('click', () => {
+              storyDuration = parseInt(db.dataset.dur);
+              panel.querySelectorAll('.story-duration-btn').forEach(x => { x.classList.remove('active'); x.style.borderColor = 'transparent'; });
+              db.classList.add('active');
+              db.style.borderColor = 'var(--btn-primary-bg)';
+            });
+          });
+        }
+      });
+    });
+
+    // Publish
+    publishBtn.addEventListener('click', async () => {
+      if (!baseImage) return;
+      publishBtn.disabled = true;
+      redrawCanvas();
+      const finalImage = canvas.toDataURL('image/jpeg', 0.8);
+      const textData = textOverlays.map(t => ({ text: t.text, x: t.x, y: t.y, styleIdx: t.styleIdx, size: t.size }));
+      try {
+        await node.createStory({ image: finalImage, text: textData.length > 0 ? textData[0].text : '', textStyle: { overlays: textData, stickers: stickerOverlays, filter: currentFilter }, duration: storyDuration });
+        showToast('Story published!', 'success');
+        overlay.remove();
+        renderFeed();
+      } catch (err) { showToast(err.message, 'error'); publishBtn.disabled = false; }
+    });
+
+    // Cleanup global refs on close
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) {
+        delete window._seRemoveText;
+        delete window._seRemoveSticker;
+        delete window._seAddSticker;
+        overlay.remove();
+      }
+    });
+  },
+
+  hideStory(address, storyId) {
+    const stories = node.blockchain.state.stories.get(address);
+    if (stories) {
+      const s = stories.find(s => s.id === storyId);
+      if (s) { s.hidden = true; showToast('Story hidden', 'info'); renderFeed(); }
+    }
+  },
+
+  viewStory(address) {
+    const activeStories = node.getActiveStories();
+    const userStory = activeStories.find(s => s.address === address);
+    if (!userStory || userStory.stories.length === 0) return;
+
+    let currentIdx = 0;
+    const stories = userStory.stories;
+    const profile = userStory.profile || {};
+    const sName = profile.name || address.slice(0, 10);
+
+    const overlay = document.createElement('div');
+    overlay.className = 'story-viewer-overlay';
+
+    function renderCurrentStory() {
+      const s = stories[currentIdx];
+      const timeAgo = formatTimeAgo(s.timestamp);
+      const sAvatar = profile.avatar
+        ? `<img src="${profile.avatar}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;">`
+        : `<div style="width:32px;height:32px;border-radius:50%;background:#333;display:flex;align-items:center;justify-content:center;font-size:12px;font-weight:600;color:#FFF;">${sName[0]?.toUpperCase() || '?'}</div>`;
+
+      overlay.innerHTML = `
+        <div class="story-viewer">
+          <div class="story-progress-bar">
+            ${stories.map((_, i) => `<div class="story-progress-segment${i < currentIdx ? ' story-progress-done' : (i === currentIdx ? ' story-progress-active' : '')}"></div>`).join('')}
+          </div>
+          <div class="story-viewer-header">
+            <div style="display:flex;align-items:center;gap:10px;">
+              ${sAvatar}
+              <div>
+                <div style="font-size:13px;font-weight:600;color:#FFF;">${escapeHtml(sName)}</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.6);">${timeAgo}</div>
+              </div>
+            </div>
+            <button style="background:none;border:none;color:#FFF;font-size:24px;cursor:pointer;padding:4px;" onclick="this.closest('.story-viewer-overlay').remove()"><i class="icon-x"></i></button>
+          </div>
+          <img src="${s.image}" class="story-viewer-image">
+          ${s.text ? `<div class="story-viewer-text">${escapeHtml(s.text)}</div>` : ''}
+          <div class="story-nav-left" onclick="event.stopPropagation()"></div>
+          <div class="story-nav-right" onclick="event.stopPropagation()"></div>
+        </div>
+      `;
+
+      // Navigation
+      overlay.querySelector('.story-nav-left').addEventListener('click', () => {
+        if (currentIdx > 0) { currentIdx--; renderCurrentStory(); }
+      });
+      overlay.querySelector('.story-nav-right').addEventListener('click', () => {
+        if (currentIdx < stories.length - 1) { currentIdx++; renderCurrentStory(); }
+        else { overlay.remove(); }
+      });
+
+      // Auto-advance after 5s
+      clearTimeout(overlay._timer);
+      overlay._timer = setTimeout(() => {
+        if (currentIdx < stories.length - 1) { currentIdx++; renderCurrentStory(); }
+        else { overlay.remove(); }
+      }, 5000);
+    }
+
+    renderCurrentStory();
+    document.body.appendChild(overlay);
+    overlay.addEventListener('click', (e) => {
+      if (e.target === overlay) { clearTimeout(overlay._timer); overlay.remove(); }
+    });
   },
 
   // Expose toast/confirm for inline onclick handlers
@@ -2757,6 +4027,11 @@ export async function initUI() {
 
   // Sidebar nav
   document.querySelectorAll('.sidebar-nav a[data-page]').forEach(link => {
+    link.addEventListener('click', (e) => { e.preventDefault(); navigate(link.dataset.page); });
+  });
+
+  // Mobile bottom nav
+  document.querySelectorAll('.mobile-bottom-nav a[data-page]').forEach(link => {
     link.addEventListener('click', (e) => { e.preventDefault(); navigate(link.dataset.page); });
   });
 

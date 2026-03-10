@@ -24,6 +24,10 @@ const ICE_SERVERS = [
   { urls: 'stun:stun2.l.google.com:19302' },
 ];
 
+// Use early-saved RTCPeerConnection (before SES lockdown from browser extensions)
+const _RTC = (typeof window !== 'undefined' &&
+  (window.__RTCPeerConnection || window.RTCPeerConnection || window.webkitRTCPeerConnection)) || null;
+
 export const MSG_TYPES = {
   HELLO: 'hello',
   GET_BLOCKS: 'get_blocks',
@@ -45,6 +49,7 @@ export class PeerNetwork {
     this.peers = new Map(); // peerId -> { connection, channel, address }
     this.messageHandlers = new Map(); // msgType -> [handler, ...]
     this.broadcastChannel = null;
+    this.signalingClient = null; // set by DiaDem after signaling init
     this.onPeerConnect = null;
     this.onPeerDisconnect = null;
     this._chunkBuffers = new Map(); // chunkId -> { parts: [], total }
@@ -56,11 +61,21 @@ export class PeerNetwork {
   _initBroadcastChannel() {
     try {
       this.broadcastChannel = new BroadcastChannel('diadem-network');
+      this._bcPeers = new Set(); // track known BroadcastChannel peers
       this.broadcastChannel.onmessage = (event) => {
         const msg = event.data;
         if (msg.from === this.nodeId) return; // Ignore own messages
+
+        // Track BroadcastChannel peers and trigger onPeerConnect for new ones
+        if (msg.from && !this._bcPeers.has(msg.from) && !this.peers.has(msg.from)) {
+          this._bcPeers.add(msg.from);
+          console.log(`[P2P] BroadcastChannel peer discovered: ${msg.from.slice(0, 12)}...`);
+          if (this.onPeerConnect) this.onPeerConnect(msg.from);
+        }
+
         this._handleMessage(msg.from, msg);
       };
+
     } catch (e) {
       console.warn('[P2P] BroadcastChannel not available');
     }
@@ -107,7 +122,21 @@ export class PeerNetwork {
   /** Send a message to a specific peer (with chunking for large payloads) */
   send(peerId, type, payload) {
     const peer = this.peers.get(peerId);
-    if (!peer || !peer.channel || peer.channel.readyState !== 'open') return false;
+    if (!peer || !peer.channel || peer.channel.readyState !== 'open') {
+      // Fallback 1: BroadcastChannel for same-browser tab peers
+      if (this._bcPeers && this._bcPeers.has(peerId) && this.broadcastChannel) {
+        try {
+          this.broadcastChannel.postMessage({ type, payload, from: this.nodeId, timestamp: Date.now() });
+          return true;
+        } catch (e) {}
+      }
+      // Fallback 2: WebSocket relay via signaling server
+      if (this.signalingClient) {
+        this.signalingClient.relayBroadcast({ type, payload, from: this.nodeId, timestamp: Date.now() });
+        return true;
+      }
+      return false;
+    }
 
     const msg = {
       type,
@@ -160,6 +189,11 @@ export class PeerNetwork {
         });
       } catch (e) {}
     }
+
+    // Also relay via WebSocket signaling server (for peers without direct WebRTC)
+    if (this.signalingClient && this.peers.size === 0) {
+      this.signalingClient.relayBroadcast({ type, payload, from: this.nodeId, timestamp: Date.now() });
+    }
   }
 
   /**
@@ -167,7 +201,8 @@ export class PeerNetwork {
    * Returns the offer string to be shared with the peer.
    */
   async createOffer() {
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    if (!_RTC) throw new Error('WebRTC not available');
+    const pc = new _RTC({ iceServers: ICE_SERVERS });
     const channel = pc.createDataChannel('diadem', { ordered: true });
 
     const peerId = crypto.randomUUID();
@@ -223,7 +258,8 @@ export class PeerNetwork {
    */
   async acceptOffer(offerString) {
     const offerData = JSON.parse(atob(offerString));
-    const pc = new RTCPeerConnection({ iceServers: ICE_SERVERS });
+    if (!_RTC) throw new Error('WebRTC not available');
+    const pc = new _RTC({ iceServers: ICE_SERVERS });
     const peerId = offerData.peerId;
 
     return new Promise((resolve) => {
@@ -286,6 +322,20 @@ export class PeerNetwork {
     await _pc.setRemoteDescription(answerData.sdp);
     for (const candidate of answerData.candidates) {
       await _pc.addIceCandidate(candidate);
+    }
+  }
+
+  /** Announce presence via BroadcastChannel to sync with other tabs */
+  announceBroadcastChannel(type, payload) {
+    if (this.broadcastChannel) {
+      try {
+        this.broadcastChannel.postMessage({
+          type,
+          payload,
+          from: this.nodeId,
+          timestamp: Date.now(),
+        });
+      } catch (e) {}
     }
   }
 

@@ -330,6 +330,7 @@ const translations = {
     copied: 'Copied!',
     error: 'Error',
     connecting: 'Connecting...',
+    online: 'Online',
     offline: 'Offline',
     just_now: 'just now',
     min_ago: 'm ago',
@@ -351,6 +352,8 @@ const translations = {
     shop_unequip: 'Unequip',
     shop_none: 'None',
     shop_confirm_buy: 'Purchase for',
+    shop_all: 'All',
+    reply_to_original: 'View original post',
 
     // Direct Messages
     dm_saved: 'Saved Messages',
@@ -396,6 +399,8 @@ const translations = {
     sp_liked: 'Liked',
     sp_reply: 'Reply',
     sp_react: 'React',
+    reposted: 'Reposted!',
+    repost_removed: 'Repost removed',
     sp_save: 'Save',
     sp_saved: 'Saved',
     sp_liked_by: 'Liked by',
@@ -405,6 +410,32 @@ const translations = {
     sp_no_liked: 'No liked posts',
     sp_show_more: 'Show more',
     sp_show_less: 'Show less',
+
+    // Profile Stats
+    profile_stats: 'Statistics',
+    stats_total_posts: 'Total Posts',
+    stats_likes_received: 'Likes Received',
+    stats_likes_given: 'Likes Given',
+    stats_replies_sent: 'Replies Sent',
+    stats_replies_received: 'Replies Received',
+    stats_reposts_made: 'Reposts Made',
+    stats_reposts_received: 'Reposts Received',
+    stats_engagement: 'Engagement',
+    stats_avg_likes: 'Avg Likes / Post',
+    stats_eng_rate: 'Engagement Rate',
+    stats_reputation: 'Reputation',
+    stats_activity: 'Activity (7 days)',
+    stats_top_liked: 'Most Liked Posts',
+    stats_top_shared: 'Most Shared Posts',
+    stats_followers_list: 'Followers',
+    stats_no_followers: 'No followers yet',
+
+    // Stories
+    stories_title: 'Stories',
+    stories_add: 'Add Story',
+    stories_your: 'Your Story',
+    stories_views: 'views',
+    stories_expired: 'Expired',
   },
 
   uk: {
@@ -733,6 +764,7 @@ const translations = {
     copied: 'Скопійовано!',
     error: 'Помилка',
     connecting: 'З\'єднання...',
+    online: 'Онлайн',
     offline: 'Офлайн',
     just_now: 'щойно',
     min_ago: 'хв тому',
@@ -754,6 +786,8 @@ const translations = {
     shop_unequip: 'Зняти',
     shop_none: 'Немає',
     shop_confirm_buy: 'Придбати за',
+    shop_all: 'Всі',
+    reply_to_original: 'Переглянути оригінальний пост',
 
     // Direct Messages
     dm_saved: 'Збережені',
@@ -799,6 +833,8 @@ const translations = {
     sp_liked: 'Вподобано',
     sp_reply: 'Відповісти',
     sp_react: 'Реакція',
+    reposted: 'Репостнуто!',
+    repost_removed: 'Репост видалено',
     sp_save: 'Зберегти',
     sp_saved: 'Збережено',
     sp_liked_by: 'Вподобали',
@@ -808,6 +844,32 @@ const translations = {
     sp_no_liked: 'Немає вподобаних постів',
     sp_show_more: 'Показати більше',
     sp_show_less: 'Показати менше',
+
+    // Profile Stats
+    profile_stats: 'Статистика',
+    stats_total_posts: 'Всього постів',
+    stats_likes_received: 'Отримано лайків',
+    stats_likes_given: 'Поставлено лайків',
+    stats_replies_sent: 'Відповідей написано',
+    stats_replies_received: 'Отримано відповідей',
+    stats_reposts_made: 'Зроблено репостів',
+    stats_reposts_received: 'Отримано репостів',
+    stats_engagement: 'Залученість',
+    stats_avg_likes: 'Сер. лайків / пост',
+    stats_eng_rate: 'Рейтинг залученості',
+    stats_reputation: 'Репутація',
+    stats_activity: 'Активність (7 днів)',
+    stats_top_liked: 'Найпопулярніші пости',
+    stats_top_shared: 'Найбільш поширені пости',
+    stats_followers_list: 'Підписники',
+    stats_no_followers: 'Підписників ще немає',
+
+    // Stories
+    stories_title: 'Сторіс',
+    stories_add: 'Додати сторіс',
+    stories_your: 'Ваш сторіс',
+    stories_views: 'переглядів',
+    stories_expired: 'Закінчився',
   },
 };
 

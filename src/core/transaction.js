@@ -29,6 +29,7 @@ export const TX_TYPES = {
   REPOST: 'repost',
   DIRECT_MESSAGE: 'direct_message',
   DM_PAYMENT: 'dm_payment',
+  STORY: 'story',
 };
 
 export class Transaction {

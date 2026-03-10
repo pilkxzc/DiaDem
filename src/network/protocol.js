@@ -202,6 +202,13 @@ export class Protocol {
       });
     };
 
+    // Announce presence on BroadcastChannel for same-browser tab sync
+    setTimeout(() => {
+      this.network.announceBroadcastChannel(MSG_TYPES.HELLO, {
+        height: this.blockchain.getHeight(),
+        nodeId: this.network.nodeId,
+      });
+    }, 800);
   }
 
   /** Broadcast a new block we produced */
@@ -439,7 +446,10 @@ export class Protocol {
       }
     }
 
-    // 17. Direct messages
+    // 17. Reposts
+    mergeSets(local.reposts, remoteState.reposts);
+
+    // 18. Direct messages
     mergeArraysById(local.directMessages, remoteState.directMessages);
 
     // 18. Block height (take higher)

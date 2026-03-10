@@ -7,13 +7,16 @@
       var t = localStorage.getItem('diadem_theme') || 'dark';
       document.documentElement.setAttribute('data-theme', t);
     })();
+    // Save WebRTC API reference before SES lockdown (browser extensions like MetaMask)
+    // can remove it from the global scope
+    window.__RTCPeerConnection = window.RTCPeerConnection || window.webkitRTCPeerConnection || null;
   </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DiaDem — Decentralized Social Network</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&family=Playfair+Display:wght@700&family=Oswald:wght@700&family=Lobster&family=Pacifico&family=Dancing+Script:wght@700&family=Righteous&family=Bebas+Neue&family=Permanent+Marker&family=Caveat:wght@700&family=Monoton&family=Orbitron:wght@700&family=Press+Start+2P&family=Cinzel:wght@700&family=Comfortaa:wght@700&family=Abril+Fatface&family=Russo+One&family=Sacramento&family=Quicksand:wght@700&family=Audiowide&family=Bangers&family=Creepster&family=Fredoka+One&family=Satisfy&family=Special+Elite&display=swap" rel="stylesheet">
   <link rel="stylesheet" href="https://unpkg.com/lucide-static@0.460.0/font/lucide.css">
   <link rel="stylesheet" href="css/style.css">
 </head>
@@ -133,7 +136,38 @@
         <button class="btn btn-primary btn-lg w-full" id="btn-login-existing" style="display:none;" onclick="window.location.hash='home'">Open DiaDem</button>
         <div class="or-divider">or</div>
         <a href="#signup" class="btn btn-outline btn-lg w-full" style="text-align:center;">Create New Wallet</a>
-        <p class="text-xs text-muted" style="text-align:center;margin-top:24px;">Your private key never leaves this device.</p>
+
+        <div class="or-divider">restore</div>
+
+        <!-- Seed Phrase Restore -->
+        <div style="margin-bottom:12px;">
+          <button class="btn btn-outline btn-lg w-full" style="text-align:center;" onclick="document.getElementById('login-seed-section').style.display=document.getElementById('login-seed-section').style.display==='none'?'block':'none'">
+            <i class="icon-key" style="font-size:14px;margin-right:6px;"></i> Restore via Seed Phrase
+          </button>
+          <div id="login-seed-section" style="display:none;margin-top:12px;">
+            <textarea id="login-seed-input" class="input-field" rows="3" placeholder="Enter your 12-word seed phrase..." style="width:100%;box-sizing:border-box;font-size:13px;resize:none;"></textarea>
+            <button class="btn btn-primary w-full" style="margin-top:8px;" id="btn-restore-seed">
+              Restore Wallet
+            </button>
+            <div id="login-seed-status" style="margin-top:8px;font-size:12px;"></div>
+          </div>
+        </div>
+
+        <!-- Access Key Restore -->
+        <div style="margin-bottom:12px;">
+          <button class="btn btn-outline btn-lg w-full" style="text-align:center;" onclick="document.getElementById('login-key-section').style.display=document.getElementById('login-key-section').style.display==='none'?'block':'none'">
+            <i class="icon-shield" style="font-size:14px;margin-right:6px;"></i> Restore via Access Key
+          </button>
+          <div id="login-key-section" style="display:none;margin-top:12px;">
+            <textarea id="login-key-input" class="input-field" rows="3" placeholder="Paste your DDM1-... access key" style="width:100%;box-sizing:border-box;font-size:12px;font-family:monospace;resize:none;"></textarea>
+            <button class="btn btn-primary w-full" style="margin-top:8px;" id="btn-restore-key">
+              Import Wallet
+            </button>
+            <div id="login-key-status" style="margin-top:8px;font-size:12px;"></div>
+          </div>
+        </div>
+
+        <p class="text-xs text-muted" style="text-align:center;margin-top:16px;">Your private key never leaves this device.</p>
       </div>
     </div>
   </div>
@@ -212,6 +246,10 @@
           <div class="form-group">
             <label>Seed Phrase</label>
             <div class="seed-grid" id="setup-seed"></div>
+            <div style="display:flex;gap:8px;margin-top:10px;">
+              <button class="btn btn-outline btn-sm" onclick="const words=document.querySelectorAll('#setup-seed .seed-word');const text=[...words].map(w=>w.textContent.replace(/^\d+\.\s*/,'')).join(' ');navigator.clipboard.writeText(text).then(()=>this.textContent='Copied!');setTimeout(()=>this.innerHTML='<i class=\'icon-copy\' style=\'font-size:12px;margin-right:4px;\'></i>Copy Seed',1500)"><i class="icon-copy" style="font-size:12px;margin-right:4px;"></i>Copy Seed</button>
+              <button class="btn btn-outline btn-sm" onclick="const addr=document.getElementById('setup-address').textContent;navigator.clipboard.writeText(addr).then(()=>this.textContent='Copied!');setTimeout(()=>this.innerHTML='<i class=\'icon-copy\' style=\'font-size:12px;margin-right:4px;\'></i>Copy Address',1500)"><i class="icon-copy" style="font-size:12px;margin-right:4px;"></i>Copy Address</button>
+            </div>
           </div>
           <div class="form-group">
             <label>Balance</label>
@@ -257,19 +295,9 @@
 
   <!-- HOME FEED -->
   <div id="page-home" class="page main-content">
-    <div class="content-area">
+    <div class="content-area full-width">
       <div class="page-header"><h2>Feed</h2></div>
       <div id="feed-posts"></div>
-    </div>
-    <div class="right-panel">
-      <div class="card card-sm mb-16">
-        <h4 class="mb-8">DDM Token</h4>
-        <div id="token-info" style="font-size:14px;color:var(--text-secondary);">Loading...</div>
-      </div>
-      <div class="card card-sm">
-        <h4 class="mb-8">Node Info</h4>
-        <div id="right-panel-info" style="font-size:13px;color:var(--text-secondary);">Loading...</div>
-      </div>
     </div>
   </div>
 
@@ -304,7 +332,7 @@
 
   <!-- SINGLE POST -->
   <div id="page-single-post" class="page main-content hidden">
-    <div class="content-area" id="single-post-data" style="max-width:700px;"></div>
+    <div class="content-area full-width" id="single-post-data"></div>
   </div>
 
   <!-- OTHER USER PROFILE -->
@@ -338,6 +366,13 @@
           </div>
           <input type="file" id="edit-avatar-input" accept="image/*" style="display:none;" onchange="window.diademUI.previewAvatar(this)">
         </div>
+      </div>
+      <div class="form-group">
+        <label>Banner</label>
+        <div id="edit-banner-preview" style="width:100%;height:120px;border-radius:12px;border:2px dashed var(--divider);cursor:pointer;background:linear-gradient(135deg, var(--btn-primary-bg), var(--purple));display:flex;align-items:center;justify-content:center;overflow:hidden;background-size:cover;background-position:center;" onclick="document.getElementById('edit-banner-input').click()">
+          <span id="edit-banner-hint" style="color:#FFF;font-size:13px;opacity:0.8;"><i class="icon-image" style="margin-right:6px;"></i>Click to upload banner</span>
+        </div>
+        <input type="file" id="edit-banner-input" accept="image/*" style="display:none;" onchange="window.diademUI.previewBanner(this)">
       </div>
       <div class="form-group"><label>Display Name</label><input type="text" class="input-field" id="edit-name"></div>
       <div class="form-group"><label>Handle</label><input type="text" class="input-field" id="edit-handle"></div>
@@ -513,6 +548,54 @@
           <!-- Security -->
           <div id="settings-security" class="settings-page hidden">
             <h2>Security</h2>
+
+            <!-- View Seed Phrase -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <h4><i class="icon-key" style="font-size:14px;margin-right:4px;"></i> Seed Phrase</h4>
+                <p>Your 12-word recovery phrase</p>
+              </div>
+              <button class="btn btn-sm btn-outline" id="btn-show-seed">Show</button>
+            </div>
+            <div id="seed-phrase-display" class="card card-sm" style="display:none;margin-bottom:16px;">
+              <div class="seed-grid" id="settings-seed-grid" style="margin-bottom:12px;"></div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-sm btn-outline" id="btn-copy-seed"><i class="icon-copy" style="font-size:12px;margin-right:4px;"></i> Copy</button>
+                <button class="btn btn-sm btn-outline" onclick="document.getElementById('seed-phrase-display').style.display='none'">Hide</button>
+              </div>
+            </div>
+
+            <!-- Access Key -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <h4><i class="icon-shield" style="font-size:14px;margin-right:4px;"></i> Access Key</h4>
+                <p>One-line key to restore your account on another browser</p>
+              </div>
+              <button class="btn btn-sm btn-outline" id="btn-show-access-key">Generate</button>
+            </div>
+            <div id="access-key-display" class="card card-sm" style="display:none;margin-bottom:16px;">
+              <div id="access-key-value" style="font-family:monospace;font-size:11px;word-break:break-all;color:var(--text-primary);background:var(--bg-secondary);padding:12px;border-radius:8px;margin-bottom:12px;max-height:80px;overflow-y:auto;"></div>
+              <div style="display:flex;gap:8px;">
+                <button class="btn btn-sm btn-outline" id="btn-copy-access-key"><i class="icon-copy" style="font-size:12px;margin-right:4px;"></i> Copy</button>
+                <button class="btn btn-sm btn-outline" onclick="document.getElementById('access-key-display').style.display='none'">Hide</button>
+              </div>
+            </div>
+
+            <!-- QR Auth for Other Device -->
+            <div class="setting-row">
+              <div class="setting-info">
+                <h4><i class="icon-smartphone" style="font-size:14px;margin-right:4px;"></i> Authenticate on Another Device</h4>
+                <p>Scan QR code to transfer your wallet to another device</p>
+              </div>
+              <button class="btn btn-sm btn-outline" id="btn-show-qr-auth">Show QR</button>
+            </div>
+            <div id="qr-auth-display" class="card card-sm" style="display:none;margin-bottom:16px;text-align:center;">
+              <p style="font-size:12px;color:var(--text-muted);margin-bottom:12px;">Scan this QR code on another device to import your wallet</p>
+              <canvas id="qr-canvas" style="max-width:220px;margin:0 auto;display:block;image-rendering:pixelated;border-radius:8px;"></canvas>
+              <p style="font-size:11px;color:var(--text-muted);margin-top:12px;">QR contains your access key. Keep it private!</p>
+              <button class="btn btn-sm btn-outline" style="margin-top:8px;" onclick="document.getElementById('qr-auth-display').style.display='none'">Hide</button>
+            </div>
+
             <div class="setting-row">
               <div class="setting-info"><h4>Key Algorithm</h4><p>Cryptographic algorithm for wallet</p></div>
               <span class="text-sm" style="color:var(--text-primary);">ECDSA P-256 (Web Crypto API)</span>
@@ -559,29 +642,47 @@
     </div>
   </div>
 
+  <!-- MOBILE BOTTOM NAV -->
+  <nav class="mobile-bottom-nav" id="mobile-nav">
+    <a href="#" data-page="home"><i class="icon-house"></i></a>
+    <a href="#" data-page="explore"><i class="icon-compass"></i></a>
+    <a href="#" data-page="messages" style="position:relative;"><i class="icon-message-circle"></i><span id="dm-unread-badge-m" class="nav-badge" style="display:none;"></span></a>
+    <a href="#" data-page="notifications" style="position:relative;"><i class="icon-bell"></i><span id="notif-unread-badge-m" class="nav-badge" style="display:none;"></span></a>
+    <a href="#" data-page="profile"><i class="icon-user"></i></a>
+    <a href="#" data-page="wallet"><i class="icon-wallet"></i></a>
+  </nav>
+  <button class="mobile-fab" id="mobile-fab" onclick="document.getElementById('compose-modal').classList.add('active')"><i class="icon-plus" style="font-size:22px;"></i></button>
+
 </div><!-- end app-shell -->
 
 <!-- COMPOSE MODAL -->
 <div id="compose-modal" class="modal-overlay">
-  <div class="modal">
-    <div class="modal-header">
-      <h3>New Post</h3>
-      <button class="modal-close" id="close-compose"><i class="icon-x" style="font-size:16px;"></i></button>
+  <div class="compose-modal">
+    <div class="compose-top">
+      <button class="compose-close" id="close-compose"><i class="icon-x" style="font-size:18px;"></i></button>
+      <button class="btn btn-primary compose-submit-btn" onclick="window.diademUI.submitPost()">Post</button>
     </div>
-    <div class="mb-16">
-      <textarea class="input-field" id="compose-text" placeholder="What's on your mind? (stored on blockchain + CAS)" style="min-height:120px;font-size:15px;"></textarea>
-    </div>
-    <div id="compose-image-preview" style="display:none;margin-bottom:12px;position:relative;">
-      <img id="compose-image-thumb" style="max-width:100%;max-height:200px;border-radius:12px;border:1px solid var(--divider);">
-      <button style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="window.diademUI.removeComposeImage()"><i class="icon-x" style="font-size:14px;"></i></button>
-    </div>
-    <div class="flex items-center justify-between">
-      <div style="display:flex;align-items:center;gap:12px;">
-        <button class="post-action" style="padding:6px 10px;" onclick="document.getElementById('compose-image-input').click()" title="Add photo"><i class="icon-image" style="font-size:18px;color:var(--accent);"></i></button>
-        <input type="file" id="compose-image-input" accept="image/*" style="display:none;" onchange="window.diademUI.previewComposeImage(this)">
-        <div class="text-xs" style="color:#EF4444;">Fee: 1 DDM per post</div>
+    <div class="compose-body">
+      <div class="compose-avatar" id="compose-avatar"></div>
+      <div class="compose-editor">
+        <textarea class="compose-textarea" id="compose-text" placeholder="What's happening?"></textarea>
+        <div id="compose-image-preview" class="compose-preview"></div>
+        <div class="compose-divider"></div>
+        <div class="compose-toolbar">
+          <div class="compose-tools">
+            <button type="button" class="compose-tool" onclick="document.getElementById('compose-image-input').click()" title="Photo"><i class="icon-image"></i></button>
+            <input type="file" id="compose-image-input" accept="image/*" multiple style="display:none;" onchange="window.diademUI.previewComposeImage(this)">
+            <button type="button" class="compose-tool" onclick="window.diademUI._insertFormat('**','**')" title="Bold"><strong>B</strong></button>
+            <button type="button" class="compose-tool" onclick="window.diademUI._insertFormat('*','*')" title="Italic"><em>I</em></button>
+            <button type="button" class="compose-tool" onclick="window.diademUI._insertFormat('~~','~~')" title="Strikethrough"><del>S</del></button>
+            <button type="button" class="compose-tool" onclick="window.diademUI._insertFormat('`','`')" title="Code" style="font-family:monospace;">C</button>
+            <button type="button" class="compose-tool" onclick="window.diademUI._insertFormat('||','||')" title="Spoiler"><i class="icon-eye-off"></i></button>
+          </div>
+          <div class="compose-meta">
+            <span class="compose-fee"><i class="icon-link" style="font-size:11px;"></i> 1 DDM</span>
+          </div>
+        </div>
       </div>
-      <button class="btn btn-primary" onclick="window.diademUI.submitPost()">Post to Blockchain</button>
     </div>
   </div>
 </div>
@@ -725,6 +826,15 @@ function hideLoader() {
         } else if (avatarPreview) {
           const initials = (profile.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
           document.getElementById('edit-avatar-initials').textContent = initials;
+        }
+        // Show current banner
+        const bannerPreview = document.getElementById('edit-banner-preview');
+        const bannerHint = document.getElementById('edit-banner-hint');
+        if (bannerPreview && profile.banner) {
+          bannerPreview.style.backgroundImage = `url(${profile.banner})`;
+          bannerPreview.style.backgroundSize = 'cover';
+          bannerPreview.style.backgroundPosition = 'center';
+          if (bannerHint) bannerHint.style.display = 'none';
         }
       }
       if (pageId === 'settings') updateSettings();

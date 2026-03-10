@@ -74,6 +74,8 @@ export class WorldState {
     this.reposts = new Map();
     // Direct messages: chatKey -> [{ id, from, to, content, image, payment, timestamp }]
     this.directMessages = new Map();
+    // Stories: address -> [{ id, author, image, text, textStyle, timestamp, views: Set }]
+    this.stories = new Map();
   }
 
   /** Get balance for an address */
@@ -102,12 +104,27 @@ export class WorldState {
     rep.score += points;
     if (field) rep[field] = (rep[field] || 0) + 1;
     // Calculate level
-    if (rep.score >= 1000) rep.level = 'Legend';
-    else if (rep.score >= 500) rep.level = 'Expert';
-    else if (rep.score >= 200) rep.level = 'Veteran';
-    else if (rep.score >= 100) rep.level = 'Active';
-    else if (rep.score >= 30) rep.level = 'Member';
-    else if (rep.score >= 5) rep.level = 'Beginner';
+    const s = rep.score;
+    if (s >= 1000000) rep.level = 'Immortal';
+    else if (s >= 750000) rep.level = 'Transcendent';
+    else if (s >= 500000) rep.level = 'Mythic';
+    else if (s >= 300000) rep.level = 'Celestial';
+    else if (s >= 200000) rep.level = 'Sovereign';
+    else if (s >= 150000) rep.level = 'Overlord';
+    else if (s >= 100000) rep.level = 'Titan';
+    else if (s >= 70000) rep.level = 'Grandmaster';
+    else if (s >= 50000) rep.level = 'Master';
+    else if (s >= 30000) rep.level = 'Diamond';
+    else if (s >= 20000) rep.level = 'Platinum';
+    else if (s >= 10000) rep.level = 'Gold';
+    else if (s >= 5000) rep.level = 'Silver';
+    else if (s >= 2000) rep.level = 'Bronze';
+    else if (s >= 1000) rep.level = 'Legend';
+    else if (s >= 500) rep.level = 'Expert';
+    else if (s >= 200) rep.level = 'Veteran';
+    else if (s >= 100) rep.level = 'Active';
+    else if (s >= 30) rep.level = 'Member';
+    else if (s >= 5) rep.level = 'Beginner';
     else rep.level = 'Newcomer';
     this.reputation.set(address, rep);
   }
@@ -191,6 +208,9 @@ export class WorldState {
       case TX_TYPES.REPOST:
       case 'repost':
         return this._applyRepost(tx);
+      case TX_TYPES.STORY:
+      case 'story':
+        return this._applyStory(tx);
       case TX_TYPES.DIRECT_MESSAGE:
       case 'direct_message':
         return this._applyDirectMessage(tx);
@@ -261,6 +281,8 @@ export class WorldState {
       author: tx.from,
       content: tx.data.content,
       media: tx.data.media || null,
+      mediaList: tx.data.mediaList || null,
+      spoilerMedia: tx.data.spoilerMedia || false,
       timestamp: tx.timestamp,
       hash: tx.hash,
     });
@@ -548,6 +570,27 @@ export class WorldState {
     return true;
   }
 
+  _applyStory(tx) {
+    const { image, text, textStyle, duration } = tx.data || {};
+    if (!image) return false;
+    const stories = this.stories.get(tx.from) || [];
+    stories.push({
+      id: tx.hash || `story-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+      author: tx.from,
+      image,
+      text: text || '',
+      textStyle: textStyle || {},
+      duration: duration || 24, // hours, 0 = permanent
+      timestamp: tx.timestamp || Date.now(),
+      views: new Set(),
+      hidden: false,
+    });
+    this.stories.set(tx.from, stories);
+    this._addReputation(tx.from, 0.3);
+    this._recordTx(tx.from, tx);
+    return true;
+  }
+
   _applyProfileDecor(tx) {
     const { itemId, slot, price } = tx.data;
     if (!itemId || !slot || !price) return false;
@@ -621,6 +664,7 @@ export class WorldState {
   /** Get all posts (explore) */
   getAllPosts(limit = 100, viewerAddress = null) {
     const posts = [];
+    const addedIds = new Set();
     for (const [pid, post] of this.posts) {
       const likesSet = this.likes.get(pid) || new Set();
       posts.push({
@@ -629,8 +673,33 @@ export class WorldState {
         likesCount: likesSet.size,
         liked: viewerAddress ? likesSet.has(viewerAddress) : false,
       });
+      addedIds.add(pid);
     }
-    posts.sort((a, b) => b.timestamp - a.timestamp);
+    // Add reposts as separate feed entries
+    for (const [pid, repostSet] of this.reposts) {
+      if (repostSet.size === 0) continue;
+      const post = this.posts.get(pid);
+      if (!post) continue;
+      for (const reposterAddr of repostSet) {
+        if (reposterAddr === post.author) continue; // skip self-reposts
+        const likesSet = this.likes.get(pid) || new Set();
+        posts.push({
+          ...post,
+          profile: this.getProfile(post.author),
+          likesCount: likesSet.size,
+          liked: viewerAddress ? likesSet.has(viewerAddress) : false,
+          repostedBy: reposterAddr,
+          repostedByProfile: this.getProfile(reposterAddr),
+        });
+      }
+    }
+    // Sort by author reputation (higher rep = higher in feed), then by time
+    posts.sort((a, b) => {
+      const repA = this.getReputation(a.author).score;
+      const repB = this.getReputation(b.author).score;
+      if (repA !== repB) return repB - repA;
+      return b.timestamp - a.timestamp;
+    });
     return posts.slice(0, limit);
   }
 
@@ -703,6 +772,9 @@ export class WorldState {
       ),
       directMessages: Object.fromEntries(
         Array.from(this.directMessages).map(([k, v]) => [k, v])
+      ),
+      stories: Object.fromEntries(
+        Array.from(this.stories).map(([k, v]) => [k, v.map(s => ({ ...s, views: [...(s.views || [])] }))])
       ),
       validators: Object.fromEntries(this.validators),
       proposals: Object.fromEntries(this.proposals),
@@ -783,8 +855,18 @@ export class WorldState {
         Object.entries(data.profileDecor).map(([k, v]) => [k, { ...v, purchased: new Set(v.purchased || []) }])
       );
     }
+    if (data.reposts) {
+      state.reposts = new Map(
+        Object.entries(data.reposts).map(([k, v]) => [k, new Set(v)])
+      );
+    }
     if (data.directMessages) {
       state.directMessages = new Map(Object.entries(data.directMessages));
+    }
+    if (data.stories) {
+      state.stories = new Map(
+        Object.entries(data.stories).map(([k, v]) => [k, v.map(s => ({ ...s, views: new Set(s.views || []) }))])
+      );
     }
     if (data.validators) {
       state.validators = new Map(Object.entries(data.validators));
