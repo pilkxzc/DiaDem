@@ -20,16 +20,9 @@ export class Blockchain {
 
   /** Initialize the blockchain with genesis block */
   async init(myAddress = null) {
-    const genesisAccounts = {};
-    // Faucet address gets initial supply for testnet
+    // Genesis is ALWAYS the same for all nodes — this is critical for chain sync!
     const faucetAddress = '0x0000000000000000000000000000000000faucet';
-    genesisAccounts[faucetAddress] = GENESIS_SUPPLY;
-
-    // Give the user some initial DDM for testing
-    if (myAddress) {
-      genesisAccounts[myAddress] = 10000;
-      genesisAccounts[faucetAddress] = GENESIS_SUPPLY - 10000;
-    }
+    const genesisAccounts = { [faucetAddress]: GENESIS_SUPPLY };
 
     const genesis = createGenesisBlock(genesisAccounts);
     genesis.hash = await genesis.computeHash();
@@ -37,7 +30,30 @@ export class Blockchain {
     this.chain = [genesis];
     this.state.applyBlock(genesis);
 
+    // Track who needs a faucet grant
+    this._pendingFaucetGrant = myAddress;
+
     return this;
+  }
+
+  /** Claim initial DDM from faucet (called once per wallet) */
+  async claimFaucet(wallet) {
+    const faucetAddress = '0x0000000000000000000000000000000000faucet';
+    if (this.state.getBalance(wallet.address) > 0) return; // Already has funds
+
+    const { Transaction, TX_TYPES } = await import('./transaction.js');
+    // Create a special faucet tx (system tx, like reward)
+    const tx = new Transaction({
+      type: TX_TYPES.REWARD,
+      from: faucetAddress,
+      to: wallet.address,
+      amount: 10000,
+      data: { reason: 'faucet_claim' },
+      nonce: Date.now(),
+    });
+    tx.hash = await tx.computeHash();
+    await this.addTransaction(tx);
+    return tx;
   }
 
   /** Get the latest block */
@@ -93,10 +109,23 @@ export class Blockchain {
       }
     }
 
-    this.mempool.push(tx instanceof Transaction ? tx : Transaction.fromJSON(tx));
+    // Check balance for post fee
+    if (tx.type === TX_TYPES.POST || tx.type === 'post') {
+      const { POST_FEE } = await import('./state.js');
+      if (this.state.getBalance(tx.from) < POST_FEE) {
+        throw new Error('Insufficient balance to create post (need 1 DDM)');
+      }
+    }
+
+    const txObj = tx instanceof Transaction ? tx : Transaction.fromJSON(tx);
+    this.mempool.push(txObj);
+
+    // Apply transaction to state immediately for instant UI feedback
+    // (will be re-validated when included in a block)
+    this.state.applyTransaction(txObj, Date.now());
 
     // Notify listeners
-    for (const cb of this.txCallbacks) cb(tx);
+    for (const cb of this.txCallbacks) cb(txObj);
 
     return true;
   }
@@ -191,28 +220,64 @@ export class Blockchain {
     return { valid: true };
   }
 
-  /** Replace chain with a longer valid chain */
+  /** Replace chain with a longer valid chain (fork resolution) */
   async replaceChain(newChain) {
     if (newChain.length <= this.chain.length) {
       return false; // New chain is not longer
     }
 
-    // Rebuild state from scratch
-    const newState = new WorldState();
+    // Validate chain continuity
     const blocks = [];
-
     for (const blockData of newChain) {
       const block = blockData instanceof Block ? blockData : Block.fromJSON(blockData);
       blocks.push(block);
+    }
+    for (let i = 1; i < blocks.length; i++) {
+      if (blocks[i].previousHash !== blocks[i - 1].hash) {
+        console.warn(`[Blockchain] replaceChain: invalid link at block ${i}`);
+        return false;
+      }
+    }
 
+    // Rebuild state from scratch
+    const newState = new WorldState();
+    // Preserve non-chain data (DMs, saved messages) from current state
+    const oldDMs = this.state.directMessages;
+    const oldSaved = this.state.savedMessages;
+
+    for (const block of blocks) {
       for (const txData of block.transactions) {
-        newState.applyTransaction(txData, block.timestamp);
+        const tx = txData instanceof Transaction ? txData : Transaction.fromJSON(txData);
+        newState.applyTransaction(tx, block.timestamp);
+      }
+      // Apply block reward
+      if (block.validator && block.validator !== '0x0000000000000000000000000000000000000000') {
+        const current = newState.getBalance(block.validator);
+        newState.balances.set(block.validator, current + 10);
       }
       newState.blockHeight = block.index;
     }
 
+    // Restore non-chain data
+    for (const [k, v] of oldDMs) {
+      if (!newState.directMessages.has(k)) newState.directMessages.set(k, v);
+      else {
+        const existing = newState.directMessages.get(k);
+        for (const msg of v) {
+          if (!existing.some(m => m.id === msg.id)) existing.push(msg);
+        }
+      }
+    }
+    for (const [k, v] of oldSaved) {
+      if (!newState.savedMessages.has(k)) newState.savedMessages.set(k, v);
+    }
+
     this.chain = blocks;
     this.state = newState;
+    // Clear mempool — txs may already be in the new chain
+    this.mempool = [];
+
+    console.log(`[Blockchain] Chain replaced, new height: ${this.getHeight()}`);
     return true;
   }
 

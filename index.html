@@ -1,6 +1,13 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="light">
+<html lang="en" data-theme="dark">
 <head>
+  <script>
+    // Restore theme ASAP to prevent flash
+    (function() {
+      var t = localStorage.getItem('diadem_theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+    })();
+  </script>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>DiaDem — Decentralized Social Network</title>
@@ -11,6 +18,17 @@
   <link rel="stylesheet" href="css/style.css">
 </head>
 <body>
+
+<!-- LOADING OVERLAY -->
+<div id="app-loader" style="position:fixed;inset:0;z-index:9999;display:flex;align-items:center;justify-content:center;flex-direction:column;gap:24px;background:var(--bg,#0D0D0D);transition:opacity .4s;">
+  <div style="position:relative;width:56px;height:56px;">
+    <div style="position:absolute;inset:0;border:3px solid var(--divider,#222);border-radius:50%;"></div>
+    <div style="position:absolute;inset:0;border:3px solid transparent;border-top-color:var(--accent,#3B82F6);border-radius:50%;animation:loaderSpin .8s linear infinite;"></div>
+  </div>
+  <div style="font-size:22px;font-weight:700;color:var(--text-primary,#F0F0F0);letter-spacing:-.5px;">DiaDem</div>
+  <div id="loader-status" style="font-size:13px;color:var(--text-muted,#6B7280);max-width:280px;text-align:center;">Initializing blockchain node...</div>
+</div>
+<style>@keyframes loaderSpin{to{transform:rotate(360deg)}}</style>
 
 <!-- ==================== LANDING PAGE ==================== -->
 <div id="page-landing" class="page landing-page">
@@ -219,14 +237,15 @@
     <nav class="sidebar-nav">
       <a href="#" data-page="home" class="active"><i class="icon-house"></i> Home</a>
       <a href="#" data-page="explore"><i class="icon-compass"></i> Explore</a>
-      <a href="#" data-page="messages"><i class="icon-message-circle"></i> Messages</a>
-      <a href="#" data-page="notifications"><i class="icon-bell"></i> Notifications</a>
+      <a href="#" data-page="messages" style="position:relative;"><i class="icon-message-circle"></i> Messages<span id="dm-unread-badge" class="nav-badge" style="display:none;"></span></a>
+      <a href="#" data-page="notifications" style="position:relative;"><i class="icon-bell"></i> Notifications<span id="notif-unread-badge" class="nav-badge" style="display:none;"></span></a>
       <a href="#" data-page="bookmarks"><i class="icon-bookmark"></i> Bookmarks</a>
       <a href="#" data-page="profile"><i class="icon-user"></i> Profile</a>
       <a href="#" data-page="wallet"><i class="icon-wallet"></i> Wallet</a>
       <a href="#" data-page="staking"><i class="icon-landmark"></i> Staking</a>
       <a href="#" data-page="governance"><i class="icon-vote"></i> Governance</a>
       <a href="#" data-page="transactions"><i class="icon-arrow-left-right"></i> Transactions</a>
+      <a href="#" data-page="shop"><i class="icon-shopping-bag"></i> Shop</a>
       <a href="#" data-page="settings"><i class="icon-settings"></i> Settings</a>
       <a href="#" data-page="peers"><i class="icon-wifi"></i> Peers</a>
     </nav>
@@ -307,6 +326,19 @@
   <div id="page-edit-profile" class="page main-content hidden">
     <div class="content-area full-width" style="max-width:640px;">
       <div class="page-header"><h2>Edit Profile</h2></div>
+      <div class="form-group">
+        <label>Avatar</label>
+        <div style="display:flex;align-items:center;gap:16px;">
+          <div class="avatar avatar-xl" id="edit-avatar-preview" style="border:2px dashed var(--divider);cursor:pointer;" onclick="document.getElementById('edit-avatar-input').click()">
+            <span class="avatar-initials" style="font-size:24px;" id="edit-avatar-initials">?</span>
+          </div>
+          <div>
+            <button class="btn btn-outline btn-sm" onclick="document.getElementById('edit-avatar-input').click()"><i class="icon-camera" style="margin-right:6px;"></i>Upload Photo</button>
+            <div class="text-xs text-muted" style="margin-top:6px;">Max 200KB, resized automatically</div>
+          </div>
+          <input type="file" id="edit-avatar-input" accept="image/*" style="display:none;" onchange="window.diademUI.previewAvatar(this)">
+        </div>
+      </div>
       <div class="form-group"><label>Display Name</label><input type="text" class="input-field" id="edit-name"></div>
       <div class="form-group"><label>Handle</label><input type="text" class="input-field" id="edit-handle"></div>
       <div class="form-group"><label>Bio</label><textarea class="input-field" id="edit-bio"></textarea></div>
@@ -320,7 +352,7 @@
 
   <!-- WALLET -->
   <div id="page-wallet" class="page main-content hidden">
-    <div style="flex:1;padding:32px 40px;background:#0D0D0D;color:#F0F0F0;min-height:100vh;" id="wallet-data">
+    <div style="flex:1;padding:32px 40px;background:var(--bg);color:var(--text-primary);min-height:100vh;" id="wallet-data">
       Loading wallet...
     </div>
   </div>
@@ -391,6 +423,14 @@
     </div>
   </div>
 
+  <!-- PROFILE SHOP -->
+  <div id="page-shop" class="page main-content hidden">
+    <div class="content-area full-width" style="max-width:800px;">
+      <div class="page-header"><h2 id="shop-page-title"><i class="icon-shopping-bag" style="margin-right:8px;"></i> Profile Shop</h2></div>
+      <div id="shop-data"></div>
+    </div>
+  </div>
+
   <!-- SETTINGS -->
   <div id="page-settings" class="page main-content hidden">
     <div class="content-area full-width">
@@ -421,7 +461,7 @@
             </div>
             <div class="setting-row">
               <div class="setting-info"><h4>Export Seed Phrase</h4><p>Backup your recovery words</p></div>
-              <button class="btn btn-sm btn-outline" onclick="alert(JSON.parse(localStorage.getItem('diadem_wallet'))?.seedPhrase?.join(' ') || 'No seed phrase')">Export</button>
+              <button class="btn btn-sm btn-outline" onclick="(function(){var s=JSON.parse(localStorage.getItem('diadem_wallet'))?.seedPhrase?.join(' ')||'No seed phrase';window.diademUI._toast('Seed phrase copied!','success',3000);navigator.clipboard.writeText(s);})()">Export</button>
             </div>
           </div>
 
@@ -490,7 +530,7 @@
                 <h4 style="color:var(--red);">Reset Node</h4>
                 <p>Delete wallet and all local data</p>
               </div>
-              <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border:none;" onclick="if(confirm('Delete wallet and all data?')){import('./src/diadem.js').then(m=>m.getNode().then(n=>{n.reset();location.hash='landing';location.reload();}));}">Reset</button>
+              <button class="btn btn-sm" style="background:#EF4444;color:#FFF;border:none;" onclick="window.diademUI._confirm('Reset Node','Delete wallet and all local data? This cannot be undone.',()=>{import('./src/diadem.js').then(m=>m.getNode().then(n=>{n.reset();location.hash='landing';location.reload();}))})">Reset</button>
             </div>
           </div>
 
@@ -531,8 +571,16 @@
     <div class="mb-16">
       <textarea class="input-field" id="compose-text" placeholder="What's on your mind? (stored on blockchain + CAS)" style="min-height:120px;font-size:15px;"></textarea>
     </div>
+    <div id="compose-image-preview" style="display:none;margin-bottom:12px;position:relative;">
+      <img id="compose-image-thumb" style="max-width:100%;max-height:200px;border-radius:12px;border:1px solid var(--divider);">
+      <button style="position:absolute;top:8px;right:8px;background:rgba(0,0,0,.6);color:#fff;border:none;border-radius:50%;width:28px;height:28px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="window.diademUI.removeComposeImage()"><i class="icon-x" style="font-size:14px;"></i></button>
+    </div>
     <div class="flex items-center justify-between">
-      <div class="text-xs text-muted">Creates a signed transaction on-chain</div>
+      <div style="display:flex;align-items:center;gap:12px;">
+        <button class="post-action" style="padding:6px 10px;" onclick="document.getElementById('compose-image-input').click()" title="Add photo"><i class="icon-image" style="font-size:18px;color:var(--accent);"></i></button>
+        <input type="file" id="compose-image-input" accept="image/*" style="display:none;" onchange="window.diademUI.previewComposeImage(this)">
+        <div class="text-xs" style="color:#EF4444;">Fee: 1 DDM per post</div>
+      </div>
       <button class="btn btn-primary" onclick="window.diademUI.submitPost()">Post to Blockchain</button>
     </div>
   </div>
@@ -563,10 +611,21 @@
 import { initUI } from './src/ui/app.js';
 import { getNode } from './src/diadem.js';
 
+function loaderMsg(msg) {
+  const el = document.getElementById('loader-status');
+  if (el) el.textContent = msg;
+}
+function hideLoader() {
+  const el = document.getElementById('app-loader');
+  if (el) { el.style.opacity = '0'; setTimeout(() => el.remove(), 400); }
+}
+
 // Boot the DiaDem node
 (async () => {
   try {
+    loaderMsg('Loading blockchain core...');
     const node = await getNode();
+    loaderMsg('Syncing state & connecting peers...');
 
     // Wallet creation handler
     document.getElementById('btn-create-wallet')?.addEventListener('click', async () => {
@@ -659,17 +718,28 @@ import { getNode } from './src/diadem.js';
         if (nameEl) nameEl.value = profile.name || '';
         if (handleEl) handleEl.value = profile.handle || '';
         if (bioEl) bioEl.value = profile.bio || '';
+        // Show current avatar
+        const avatarPreview = document.getElementById('edit-avatar-preview');
+        if (avatarPreview && profile.avatar) {
+          avatarPreview.innerHTML = `<img src="${profile.avatar}" alt="">`;
+        } else if (avatarPreview) {
+          const initials = (profile.name || '?').split(' ').map(w => w[0]).join('').toUpperCase().slice(0, 2);
+          document.getElementById('edit-avatar-initials').textContent = initials;
+        }
       }
       if (pageId === 'settings') updateSettings();
     };
     window.diademUI.navigate = wrappedNav;
 
     // Initialize UI
+    loaderMsg('Rendering interface...');
     await initUI();
     updateSettings();
+    hideLoader();
 
   } catch (err) {
     console.error('[DiaDem] Boot error:', err);
+    hideLoader();
     document.body.innerHTML = `<div style="padding:60px;text-align:center;">
       <h2>DiaDem Node Error</h2>
       <p style="color:#EF4444;margin-top:16px;">${err.message}</p>

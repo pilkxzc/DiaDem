@@ -34,6 +34,9 @@ export const MSG_TYPES = {
   PEERS: 'peers',
   SYNC_REQUEST: 'sync_request',
   SYNC_RESPONSE: 'sync_response',
+  STATE_SYNC: 'state_sync',
+  DM_TYPING: 'dm_typing',
+  DM_INSTANT: 'dm_instant',
 };
 
 export class PeerNetwork {
@@ -44,6 +47,7 @@ export class PeerNetwork {
     this.broadcastChannel = null;
     this.onPeerConnect = null;
     this.onPeerDisconnect = null;
+    this._chunkBuffers = new Map(); // chunkId -> { parts: [], total }
 
     this._initBroadcastChannel();
   }
@@ -70,8 +74,26 @@ export class PeerNetwork {
     this.messageHandlers.get(msgType).push(handler);
   }
 
-  /** Handle incoming message */
+  /** Handle incoming message (with chunk reassembly) */
   _handleMessage(peerId, msg) {
+    // Reassemble chunked messages
+    if (msg.__chunk) {
+      const buf = this._chunkBuffers.get(msg.id) || { parts: new Array(msg.total), received: 0 };
+      buf.parts[msg.index] = msg.data;
+      buf.received++;
+      this._chunkBuffers.set(msg.id, buf);
+      if (buf.received === msg.total) {
+        this._chunkBuffers.delete(msg.id);
+        try {
+          const fullMsg = JSON.parse(buf.parts.join(''));
+          this._handleMessage(peerId, fullMsg);
+        } catch (err) {
+          console.error('[P2P] Failed to reassemble chunked message:', err);
+        }
+      }
+      return;
+    }
+
     const handlers = this.messageHandlers.get(msg.type) || [];
     for (const handler of handlers) {
       try {
@@ -82,47 +104,60 @@ export class PeerNetwork {
     }
   }
 
-  /** Send a message to a specific peer */
+  /** Send a message to a specific peer (with chunking for large payloads) */
   send(peerId, type, payload) {
+    const peer = this.peers.get(peerId);
+    if (!peer || !peer.channel || peer.channel.readyState !== 'open') return false;
+
     const msg = {
       type,
       payload,
       from: this.nodeId,
       timestamp: Date.now(),
     };
+    const data = JSON.stringify(msg);
 
-    const peer = this.peers.get(peerId);
-    if (peer && peer.channel && peer.channel.readyState === 'open') {
-      peer.channel.send(JSON.stringify(msg));
+    try {
+      // WebRTC data channels typically have ~256KB limit; chunk if over 200KB
+      if (data.length > 200000) {
+        const chunkSize = 180000;
+        const totalChunks = Math.ceil(data.length / chunkSize);
+        const chunkId = Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+        for (let i = 0; i < totalChunks; i++) {
+          peer.channel.send(JSON.stringify({
+            __chunk: true,
+            id: chunkId,
+            index: i,
+            total: totalChunks,
+            data: data.slice(i * chunkSize, (i + 1) * chunkSize),
+          }));
+        }
+      } else {
+        peer.channel.send(data);
+      }
       return true;
+    } catch (err) {
+      console.warn(`[P2P] Failed to send to ${peerId}:`, err.message);
+      return false;
     }
-    return false;
   }
 
   /** Broadcast a message to all peers and BroadcastChannel */
   broadcast(type, payload) {
-    const msg = {
-      type,
-      payload,
-      from: this.nodeId,
-      timestamp: Date.now(),
-    };
-
-    // Send to WebRTC peers
-    for (const [peerId, peer] of this.peers) {
-      if (peer.channel && peer.channel.readyState === 'open') {
-        try {
-          peer.channel.send(JSON.stringify(msg));
-        } catch (err) {
-          console.warn(`[P2P] Failed to send to ${peerId}`);
-        }
-      }
+    // Use send() for each peer (handles chunking automatically)
+    for (const peerId of this.peers.keys()) {
+      this.send(peerId, type, payload);
     }
 
-    // Send to BroadcastChannel (for local tabs)
+    // Send to BroadcastChannel (for local tabs) — no chunking needed
     if (this.broadcastChannel) {
       try {
-        this.broadcastChannel.postMessage(msg);
+        this.broadcastChannel.postMessage({
+          type,
+          payload,
+          from: this.nodeId,
+          timestamp: Date.now(),
+        });
       } catch (e) {}
     }
   }
@@ -168,8 +203,7 @@ export class PeerNetwork {
 
       channel.onmessage = (event) => {
         try {
-          const msg = JSON.parse(event.data);
-          this._handleMessage(peerId, msg);
+          this._handleMessage(peerId, JSON.parse(event.data));
         } catch (err) {
           console.error('[P2P] Parse error:', err);
         }

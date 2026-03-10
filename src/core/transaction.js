@@ -15,8 +15,20 @@ export const TX_TYPES = {
   UNFOLLOW: 'unfollow',
   LIKE: 'like',
   VOTE: 'vote',
+  REPLY: 'reply',
+  UNLIKE: 'unlike',
+  DELETE_POST: 'delete_post',
+  SAVED_MESSAGE: 'saved_message',
+  DELETE_SAVED_MESSAGE: 'delete_saved_message',
+  DELETE_REPLY: 'delete_reply',
+  PROFILE_DECOR: 'profile_decor',
+  EQUIP_DECOR: 'equip_decor',
+  REACTION: 'reaction',
   PROFILE_UPDATE: 'profile_update',
   REWARD: 'reward', // system-generated staking reward
+  REPOST: 'repost',
+  DIRECT_MESSAGE: 'direct_message',
+  DM_PAYMENT: 'dm_payment',
 };
 
 export class Transaction {
@@ -76,6 +88,8 @@ export class Transaction {
     if (this.type === TX_TYPES.TRANSFER && (!this.to || this.amount <= 0)) return false;
     if (this.type === TX_TYPES.STAKE && this.amount <= 0) return false;
     if (this.type === TX_TYPES.POST && (!this.data || !this.data.content)) return false;
+    if (this.type === TX_TYPES.REPLY && (!this.data || !this.data.parentId || !this.data.content)) return false;
+    if (this.type === TX_TYPES.SAVED_MESSAGE && (!this.data || !this.data.content)) return false;
     return true;
   }
 

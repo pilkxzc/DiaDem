@@ -47,7 +47,7 @@ export class ProofOfStake {
    * @param {string} publicKey - Validator's public key hex
    * @param {Function} signFn - Function to sign data with validator's private key
    */
-  startProduction(address, publicKey, signFn) {
+  startProduction(address, publicKey, signFn, onBlockProduced = null) {
     if (this.isProducing) return;
     this.isProducing = true;
 
@@ -67,6 +67,8 @@ export class ProofOfStake {
           const block = await this.blockchain.createBlock(address, publicKey, signFn);
           await this.blockchain.addBlock(block);
           console.log(`[PoS] Block #${block.index} produced with ${block.transactions.length} txs`);
+          // Broadcast the produced block to all peers
+          if (onBlockProduced) onBlockProduced(block);
         }
       } catch (err) {
         console.error('[PoS] Block production error:', err);

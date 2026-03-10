@@ -117,6 +117,19 @@ export class SignalingClient {
 
       // Incoming WebRTC offer
       case 'offer': {
+        // Glare resolution: if we also sent an offer to this peer,
+        // the peer with the "smaller" ID yields (drops their outgoing offer)
+        if (this.pendingConnections.has(msg.from)) {
+          if (this.peerNetwork.nodeId < msg.from) {
+            // We yield — close our outgoing connection attempt, accept theirs
+            const ourPc = this.pendingConnections.get(msg.from);
+            ourPc.close();
+            this.pendingConnections.delete(msg.from);
+          } else {
+            // They should yield — ignore their offer
+            break;
+          }
+        }
         await this._handleOffer(msg.from, msg.offer);
         break;
       }
@@ -280,6 +293,11 @@ export class SignalingClient {
   async _handleAnswer(fromPeerId, answer) {
     const pc = this.pendingConnections.get(fromPeerId);
     if (!pc) return;
+
+    // Only set answer if we're in the right state (have-local-offer)
+    if (pc.signalingState !== 'have-local-offer') {
+      return;
+    }
 
     try {
       await pc.setRemoteDescription(answer);

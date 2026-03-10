@@ -26,7 +26,7 @@ import { Blockchain } from './core/blockchain.js';
 import { Transaction, TX_TYPES, createTransfer, createPost, createStake,
          createFollow, createLike, createProfileUpdate, createVote } from './core/transaction.js';
 import { ProofOfStake } from './consensus/pos.js';
-import { PeerNetwork } from './network/peer.js';
+import { PeerNetwork, MSG_TYPES } from './network/peer.js';
 import { Protocol } from './network/protocol.js';
 import { SignalingClient } from './network/signaling.js';
 import { IPFSBridge } from './network/ipfs.js';
@@ -75,6 +75,14 @@ export class DiaDemNode {
     // Try to rebuild from CAS cache
     await this._rebuildFromCAS();
 
+    // Restore persisted state (includes immediate tx changes + saved messages)
+    await this._loadState();
+
+    // Claim faucet DDM if new wallet with 0 balance
+    if (this.wallet && this.blockchain.state.getBalance(this.wallet.address) === 0) {
+      await this.blockchain.claimFaucet(this.wallet);
+    }
+
     // Listen for new blocks
     this.blockchain.onBlock(async (block) => {
       // Store block data in CAS
@@ -98,6 +106,16 @@ export class DiaDemNode {
 
     // 5. Protocol (blockchain sync)
     this.protocol = new Protocol(this.network, this.blockchain);
+    // When state syncs from another tab, update UI (without re-broadcasting)
+    this.protocol.onStateSync = () => {
+      this._syncing = true;
+      this._saveState();
+      // Notify UI listeners directly without triggering another broadcast
+      for (const h of (this._listeners['stateChange'] || [])) {
+        try { h(); } catch (e) { console.error('[stateSync]', e); }
+      }
+      this._syncing = false;
+    };
 
     // 6. IPFS Bridge — connect CAS to the IPFS network
     this.ipfs = new IPFSBridge(this.cas);
@@ -123,6 +141,13 @@ export class DiaDemNode {
     this.blockchain.onBlock((block) => {
       this.signaling.updateHeight(block.index);
     });
+
+    // 9. Persist state on every state change (survives reload)
+    this.blockchain.onBlock(() => this._saveState());
+    this.blockchain.onTransaction(() => this._saveState());
+
+    // 10. Announce via BroadcastChannel so other tabs sync
+    setTimeout(() => this._broadcastHello(), 500);
 
     this.ready = true;
     console.log('[DiaDem] Node ready!');
@@ -173,6 +198,14 @@ export class DiaDemNode {
     this.network = new PeerNetwork(this.wallet.address);
     this.cas.attachNetwork(this.network);
     this.protocol = new Protocol(this.network, this.blockchain);
+    this.protocol.onStateSync = () => {
+      this._syncing = true;
+      this._saveState();
+      for (const h of (this._listeners['stateChange'] || [])) {
+        try { h(); } catch (e) { console.error('[stateSync]', e); }
+      }
+      this._syncing = false;
+    };
     this.ipfs = new IPFSBridge(this.cas);
     this.consensus = new ProofOfStake(this.blockchain);
 
@@ -188,11 +221,21 @@ export class DiaDemNode {
     this.blockchain.onBlock(async (block) => {
       await this.cas.put(block.toJSON ? block.toJSON() : block, 'json', true);
       this._saveCASCache();
+      this._saveState();
       this.emit('block', block);
       this.emit('stateChange');
     });
 
+    this.blockchain.onTransaction(() => this._saveState());
+
     this._startConsensus();
+
+    // Claim faucet DDM for new wallet
+    await this.blockchain.claimFaucet(this.wallet);
+    this._saveState();
+
+    // Announce to other tabs
+    setTimeout(() => this._broadcastHello(), 500);
 
     this.emit('walletCreated', this.wallet);
     this.emit('stateChange');
@@ -240,10 +283,303 @@ export class DiaDemNode {
     return tx;
   }
 
+  /** React to a post with emoji */
+  async reactToPost(postId, emoji) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.REACTION,
+      from: this.wallet.address,
+      data: { postId, emoji },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Unlike a post */
+  async unlikePost(postId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.UNLIKE,
+      from: this.wallet.address,
+      data: { postHash: postId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Delete own post */
+  async deletePost(postId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.DELETE_POST,
+      from: this.wallet.address,
+      data: { postId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Reply to a post (free, no DDM cost) */
+  async replyToPost(parentId, content) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.REPLY,
+      from: this.wallet.address,
+      data: { parentId, content, id: crypto.randomUUID() },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Buy profile decoration */
+  async buyProfileDecor(itemId, slot, price) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.PROFILE_DECOR,
+      from: this.wallet.address,
+      data: { itemId, slot, price },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Equip or unequip a decoration (itemId=null to unequip) */
+  async equipProfileDecor(slot, itemId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.EQUIP_DECOR,
+      from: this.wallet.address,
+      data: { slot, itemId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Get profile decorations */
+  getProfileDecor(address = null) {
+    return this.blockchain.state.profileDecor.get(address || this.wallet?.address) || { purchased: new Set() };
+  }
+
+  /** Delete a reply */
+  async deleteReply(replyId, parentId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.DELETE_REPLY,
+      from: this.wallet.address,
+      data: { replyId, parentId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Save a message (like Telegram Saved Messages - only for you) */
+  async saveMessage(content) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.SAVED_MESSAGE,
+      from: this.wallet.address,
+      data: { content, id: crypto.randomUUID() },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Delete a saved message */
+  async deleteSavedMessage(messageId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.DELETE_SAVED_MESSAGE,
+      from: this.wallet.address,
+      data: { messageId },
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Get saved messages */
+  getSavedMessages() {
+    if (!this.wallet) return [];
+    return (this.blockchain.state.savedMessages.get(this.wallet.address) || []).slice().reverse();
+  }
+
+  /** Send a direct message — instant delivery via P2P, then persisted on-chain */
+  async sendDirectMessage(toAddress, content, image = null) {
+    this._requireWallet();
+    const msgId = crypto.randomUUID();
+    const msg = {
+      id: msgId,
+      from: this.wallet.address,
+      to: toAddress,
+      content: content || '',
+      image: image || null,
+      timestamp: Date.now(),
+    };
+
+    // 1) Instant local apply
+    const key = [this.wallet.address, toAddress].sort().join(':');
+    const dm = this.blockchain.state.directMessages;
+    if (!dm.has(key)) dm.set(key, []);
+    dm.get(key).push(msg);
+    this.emit('stateChange');
+
+    // 2) Instant P2P broadcast (no block wait)
+    this.network.broadcast(MSG_TYPES.DM_INSTANT, { msg });
+
+    // 3) Persist on-chain (async, no await needed for UI)
+    const tx = new Transaction({
+      type: TX_TYPES.DIRECT_MESSAGE,
+      from: this.wallet.address,
+      to: toAddress,
+      data: { content, image, id: msgId },
+      nonce: Date.now(),
+    });
+    tx.sign(this.wallet.privateKey, this.wallet.publicKey).then(async () => {
+      await this.blockchain.addTransaction(tx);
+      this.protocol.broadcastTransaction(tx);
+    }).catch(() => {});
+
+    return msg;
+  }
+
+  /** Send DDM tokens through DM chat — instant delivery */
+  async sendDmPayment(toAddress, amount, memo = '') {
+    this._requireWallet();
+    if (amount <= 0) throw new Error('Amount must be positive');
+    if (this.getBalance() < amount) throw new Error('Insufficient balance');
+    const msgId = crypto.randomUUID();
+    const msg = {
+      id: msgId,
+      from: this.wallet.address,
+      to: toAddress,
+      content: '',
+      payment: { amount, memo },
+      timestamp: Date.now(),
+    };
+
+    // 1) Instant local apply (message + balance)
+    const key = [this.wallet.address, toAddress].sort().join(':');
+    const dm = this.blockchain.state.directMessages;
+    if (!dm.has(key)) dm.set(key, []);
+    dm.get(key).push(msg);
+    const fromBal = this.blockchain.state.getBalance(this.wallet.address);
+    const toBal = this.blockchain.state.getBalance(toAddress);
+    this.blockchain.state.balances.set(this.wallet.address, fromBal - amount);
+    this.blockchain.state.balances.set(toAddress, toBal + amount);
+    this.emit('stateChange');
+
+    // 2) Instant P2P broadcast
+    this.network.broadcast(MSG_TYPES.DM_INSTANT, { msg });
+
+    // 3) Persist on-chain (background)
+    const tx = new Transaction({
+      type: TX_TYPES.DM_PAYMENT,
+      from: this.wallet.address,
+      to: toAddress,
+      amount,
+      data: { memo, id: msgId },
+      nonce: Date.now(),
+    });
+    tx.sign(this.wallet.privateKey, this.wallet.publicKey).then(async () => {
+      await this.blockchain.addTransaction(tx);
+      this.protocol.broadcastTransaction(tx);
+    }).catch(() => {});
+
+    return msg;
+  }
+
+  /** Get all DM chats for current user */
+  getDMChats() {
+    if (!this.wallet) return [];
+    const myAddr = this.wallet.address;
+    const chats = [];
+    for (const [key, msgs] of this.blockchain.state.directMessages) {
+      const [a, b] = key.split(':');
+      if (a !== myAddr && b !== myAddr) continue;
+      const otherAddr = a === myAddr ? b : a;
+      const sorted = msgs.slice().sort((x, y) => x.timestamp - y.timestamp);
+      const last = sorted[sorted.length - 1];
+      chats.push({
+        chatKey: key,
+        otherAddress: otherAddr,
+        lastMessage: last,
+        messages: sorted,
+        unread: 0,
+      });
+    }
+    chats.sort((a, b) => (b.lastMessage?.timestamp || 0) - (a.lastMessage?.timestamp || 0));
+    return chats;
+  }
+
+  /** Get DM messages for a specific chat */
+  getDMMessages(otherAddress) {
+    if (!this.wallet) return [];
+    const key = [this.wallet.address, otherAddress].sort().join(':');
+    return (this.blockchain.state.directMessages.get(key) || []).slice().sort((a, b) => a.timestamp - b.timestamp);
+  }
+
+  /** Send typing indicator (ephemeral, not on-chain) */
+  sendTypingIndicator(toAddress) {
+    if (!this.wallet || !this.network) return;
+    this.network.broadcast(MSG_TYPES.DM_TYPING, {
+      from: this.wallet.address,
+      to: toAddress,
+    });
+  }
+
   /** Follow a user */
   async followUser(address) {
     this._requireWallet();
     const tx = await createFollow(this.wallet, address);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Unfollow a user */
+  async unfollowUser(address) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.UNFOLLOW,
+      from: this.wallet.address,
+      to: address,
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
     await this.blockchain.addTransaction(tx);
     this.protocol.broadcastTransaction(tx);
     this.emit('stateChange');
@@ -333,18 +669,22 @@ export class DiaDemNode {
   }
 
   getExplorePosts(limit = 100) {
-    return this.blockchain.state.getAllPosts(limit);
+    return this.blockchain.state.getAllPosts(limit, this.wallet?.address);
   }
 
   getUserPosts(address) {
+    const myAddr = this.wallet?.address;
     const postIds = this.blockchain.state.postsByAuthor.get(address) || [];
     return postIds.map(pid => {
       const post = this.blockchain.state.posts.get(pid);
-      return post ? {
+      if (!post) return null;
+      const likesSet = this.blockchain.state.likes.get(pid) || new Set();
+      return {
         ...post,
         profile: this.blockchain.state.getProfile(post.author),
-        likesCount: (this.blockchain.state.likes.get(pid) || new Set()).size,
-      } : null;
+        likesCount: likesSet.size,
+        liked: myAddr ? likesSet.has(myAddr) : false,
+      };
     }).filter(Boolean).reverse();
   }
 
@@ -364,6 +704,10 @@ export class DiaDemNode {
 
   getValidators() {
     return this.blockchain.state.getValidators();
+  }
+
+  getReputation(address = null) {
+    return this.blockchain.state.getReputation(address || this.wallet?.address);
   }
 
   /** Get data from CAS by hash */
@@ -424,11 +768,61 @@ export class DiaDemNode {
 
   _startConsensus() {
     if (!this.wallet) return;
+    // Wrap consensus to broadcast produced blocks to all peers
+    const protocol = this.protocol;
     this.consensus.startProduction(
       this.wallet.address,
       this.wallet.publicKey,
-      async (data) => sign(data, this.wallet.privateKey)
+      async (data) => sign(data, this.wallet.privateKey),
+      // onBlockProduced callback — broadcast to peers
+      (block) => {
+        protocol.broadcastBlock(block);
+      }
     );
+  }
+
+  /** Announce presence via BroadcastChannel so other tabs sync */
+  _broadcastHello() {
+    if (this.network) {
+      this.network.broadcast(MSG_TYPES.HELLO, {
+        height: this.blockchain.getHeight(),
+        nodeId: this.network.nodeId,
+      });
+      // Also broadcast full state for immediate sync
+      this.protocol.broadcastState();
+    }
+  }
+
+  /** Save full state + mempool to localStorage for persistence across reloads */
+  _saveState() {
+    try {
+      const stateData = {
+        state: this.blockchain.state.toJSON(),
+        mempool: this.blockchain.mempool.map(tx => tx.toJSON ? tx.toJSON() : tx),
+        chainLength: this.blockchain.chain.length,
+      };
+      localStorage.setItem('diadem_state_cache', JSON.stringify(stateData));
+    } catch (e) {
+      console.warn('[DiaDem] State save failed:', e.message);
+    }
+  }
+
+  /** Load persisted state from localStorage */
+  async _loadState() {
+    try {
+      const raw = localStorage.getItem('diadem_state_cache');
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (data.state) {
+        const { WorldState } = await import('./core/state.js');
+        this.blockchain.state = WorldState.fromJSON(data.state);
+        console.log('[DiaDem] State restored from cache');
+      }
+      return true;
+    } catch (e) {
+      console.warn('[DiaDem] State load failed:', e.message);
+      return false;
+    }
   }
 
   /** Try to rebuild chain from CAS cached blocks */
@@ -478,6 +872,17 @@ export class DiaDemNode {
   emit(event, data) {
     for (const h of (this._listeners[event] || [])) {
       try { h(data); } catch (e) { console.error(`[Event:${event}]`, e); }
+    }
+    // Auto-sync state to other tabs on state change (throttled, not on sync-triggered events)
+    if (event === 'stateChange' && this.protocol && this.network && !this._syncing) {
+      this._saveState();
+      // Throttle broadcasting to max once per second
+      if (!this._syncTimer) {
+        this._syncTimer = setTimeout(() => {
+          this._syncTimer = null;
+          if (this.protocol) this.protocol.broadcastState();
+        }, 1000);
+      }
     }
   }
 
