@@ -6,12 +6,19 @@
  */
 
 const WALLET_KEY = 'diadem_wallet';
+const WALLET_BACKUPS_KEY = 'diadem_wallet_backups';
 const SETTINGS_KEY = 'diadem_settings';
 const CAS_CACHE_KEY = 'diadem_cas_cache';
 
 export class KeyStore {
   /** Save wallet credentials (private key only — never leaves the device) */
   static saveWallet(wallet) {
+    // Backup current wallet before overwriting (for seed phrase restore of old wallets)
+    const existing = KeyStore.loadWallet();
+    if (existing && existing.address !== wallet.address) {
+      KeyStore._backupWallet(existing);
+    }
+
     const data = {
       address: wallet.address,
       publicKey: wallet.publicKey,
@@ -20,6 +27,32 @@ export class KeyStore {
       createdAt: wallet.createdAt || Date.now(),
     };
     localStorage.setItem(WALLET_KEY, JSON.stringify(data));
+  }
+
+  /** Backup a wallet to the backups list (dedup by address) */
+  static _backupWallet(wallet) {
+    try {
+      const backups = KeyStore.loadWalletBackups();
+      if (backups.some(b => b.address === wallet.address)) return;
+      backups.push({
+        address: wallet.address,
+        publicKey: wallet.publicKey,
+        privateKey: wallet.privateKey,
+        seedPhrase: wallet.seedPhrase,
+        createdAt: wallet.createdAt,
+      });
+      localStorage.setItem(WALLET_BACKUPS_KEY, JSON.stringify(backups));
+    } catch (e) {
+      console.warn('[KeyStore] Failed to backup wallet:', e.message);
+    }
+  }
+
+  /** Load all backed-up wallets */
+  static loadWalletBackups() {
+    try {
+      const data = localStorage.getItem(WALLET_BACKUPS_KEY);
+      return data ? JSON.parse(data) : [];
+    } catch { return []; }
   }
 
   /** Load wallet credentials */
@@ -70,6 +103,7 @@ export class KeyStore {
   /** Full reset */
   static clearAll() {
     localStorage.removeItem(WALLET_KEY);
+    localStorage.removeItem(WALLET_BACKUPS_KEY);
     localStorage.removeItem(SETTINGS_KEY);
     localStorage.removeItem(CAS_CACHE_KEY);
   }

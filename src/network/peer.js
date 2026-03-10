@@ -190,8 +190,8 @@ export class PeerNetwork {
       } catch (e) {}
     }
 
-    // Also relay via WebSocket signaling server (for peers without direct WebRTC)
-    if (this.signalingClient && this.peers.size === 0) {
+    // Always relay via WebSocket signaling server (ensures server node receives state)
+    if (this.signalingClient) {
       this.signalingClient.relayBroadcast({ type, payload, from: this.nodeId, timestamp: Date.now() });
     }
   }
@@ -339,12 +339,16 @@ export class PeerNetwork {
     }
   }
 
-  /** Get number of connected peers */
+  /** Get number of connected peers (WebRTC + BroadcastChannel + server relay) */
   getPeerCount() {
     let count = 0;
     for (const [, peer] of this.peers) {
       if (peer.channel && peer.channel.readyState === 'open') count++;
     }
+    // Count BroadcastChannel peers (same-device tabs)
+    if (this._bcPeers) count += this._bcPeers.size;
+    // Count signaling server as 1 peer if connected (server acts as a node)
+    if (this.signalingClient?.connected) count++;
     return count;
   }
 

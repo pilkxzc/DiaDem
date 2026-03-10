@@ -61,11 +61,12 @@ export class SignalingClient {
       this.reconnectDelay = RECONNECT_DELAY;
       this._emitStatus('connected');
 
-      // Announce ourselves
+      // Announce ourselves (address is wallet address without instance suffix)
+      const walletAddress = this.peerNetwork.nodeId.replace(/-[a-z0-9]{6}$/, '');
       this.ws.send(JSON.stringify({
         type: 'announce',
         peerId: this.peerNetwork.nodeId,
-        address: this.peerNetwork.nodeId,
+        address: walletAddress,
         chainHeight: 0,
       }));
     };

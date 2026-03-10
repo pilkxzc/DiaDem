@@ -3241,6 +3241,7 @@ window.diademUI = {
                     ${s.text ? `<div style="position:absolute;bottom:8px;left:8px;right:8px;font-size:11px;color:#FFF;text-shadow:0 1px 4px rgba(0,0,0,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(s.text)}</div>` : ''}
                     <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${formatTimeAgo(s.timestamp)}</div>
                     ${isOwn && !s.hidden ? `<button style="position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.5);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.hideStory('${address}','${s.id}')" title="Hide"><i class="icon-eye-off" style="font-size:11px;"></i></button>` : ''}
+                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="Delete"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -3256,6 +3257,7 @@ window.diademUI = {
                   <div class="story-grid-item" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:#111;opacity:0.6;">
                     <img src="${s.image}" style="width:100%;height:100%;object-fit:cover;">
                     <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${t('stories_expired')}</div>
+                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="Delete"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -3674,6 +3676,18 @@ window.diademUI = {
     if (stories) {
       const s = stories.find(s => s.id === storyId);
       if (s) { s.hidden = true; showToast('Story hidden', 'info'); renderFeed(); }
+    }
+  },
+
+  async deleteStory(address, storyId) {
+    if (!confirm('Delete this story permanently?')) return;
+    try {
+      await node.deleteStory(storyId);
+      showToast('Story deleted', 'success');
+      renderProfile(address);
+      renderFeed();
+    } catch (err) {
+      showToast('Failed to delete story: ' + err.message, 'error');
     }
   },
 

@@ -30,6 +30,7 @@ export const TX_TYPES = {
   DIRECT_MESSAGE: 'direct_message',
   DM_PAYMENT: 'dm_payment',
   STORY: 'story',
+  DELETE_STORY: 'delete_story',
 };
 
 export class Transaction {

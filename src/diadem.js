@@ -97,8 +97,9 @@ export class DiaDemNode {
       this.emit('transaction', tx);
     });
 
-    // 4. P2P Network
-    const nodeId = this.wallet?.address || crypto.randomUUID();
+    // 4. P2P Network (unique instanceId per browser tab to avoid peerId collision on same wallet)
+    const instanceSuffix = '-' + Math.random().toString(36).slice(2, 8);
+    const nodeId = (this.wallet?.address || crypto.randomUUID()) + instanceSuffix;
     this.network = new PeerNetwork(nodeId);
 
     // Attach CAS to network for data replication
@@ -162,8 +163,10 @@ export class DiaDemNode {
 
   /** Create a new wallet */
   async createWallet(name = null) {
-    const keyPair = await generateKeyPair();
+    // Generate seed phrase first, then derive keys deterministically from it
+    // This ensures seed phrase restore produces the SAME wallet
     const seedPhrase = generateSeedPhrase();
+    const keyPair = await deriveKeyFromSeed(seedPhrase);
 
     this.wallet = {
       address: keyPair.address,
@@ -182,7 +185,8 @@ export class DiaDemNode {
 
     // Reconnect network, protocol, signaling, IPFS, consensus
     if (this.signaling) this.signaling.disconnect();
-    this.network = new PeerNetwork(this.wallet.address);
+    const cwInstanceId = this.wallet.address + '-' + Math.random().toString(36).slice(2, 8);
+    this.network = new PeerNetwork(cwInstanceId);
     this.cas.attachNetwork(this.network);
     this.protocol = new Protocol(this.network, this.blockchain);
     this.protocol.onStateSync = () => {
@@ -248,9 +252,45 @@ export class DiaDemNode {
 
   /** Import wallet from seed phrase */
   async importFromSeed(seedPhrase) {
-    const phrase = Array.isArray(seedPhrase) ? seedPhrase : seedPhrase.trim().split(/\s+/);
+    const phrase = Array.isArray(seedPhrase) ? seedPhrase : seedPhrase.trim().split(/\s+/).map(w => w.toLowerCase());
     if (!validateSeedPhrase(phrase)) throw new Error('Invalid seed phrase (must be 12 valid words)');
 
+    // 1. Check if current loaded wallet matches this seed phrase
+    if (this.wallet?.seedPhrase) {
+      const currentSeed = Array.isArray(this.wallet.seedPhrase) ? this.wallet.seedPhrase.join(' ') : this.wallet.seedPhrase;
+      if (currentSeed === phrase.join(' ')) {
+        console.log('[DiaDem] Seed matches current wallet, reusing existing keys');
+        return this.wallet;
+      }
+    }
+
+    // 2. Check localStorage for a wallet with matching seed phrase
+    const stored = KeyStore.loadWallet();
+    if (stored?.seedPhrase) {
+      const storedSeed = Array.isArray(stored.seedPhrase) ? stored.seedPhrase.join(' ') : stored.seedPhrase;
+      if (storedSeed === phrase.join(' ')) {
+        console.log('[DiaDem] Seed matches stored wallet, restoring original keys');
+        this.wallet = stored;
+        await this._reinitAfterImport();
+        return this.wallet;
+      }
+    }
+
+    // 3. Check all backed-up wallets in localStorage
+    const backups = KeyStore.loadWalletBackups();
+    for (const backup of backups) {
+      const backupSeed = Array.isArray(backup.seedPhrase) ? backup.seedPhrase.join(' ') : (backup.seedPhrase || '');
+      if (backupSeed === phrase.join(' ')) {
+        console.log('[DiaDem] Seed matches backed-up wallet:', backup.address);
+        this.wallet = backup;
+        KeyStore.saveWallet(this.wallet);
+        await this._reinitAfterImport();
+        return this.wallet;
+      }
+    }
+
+    // 4. No existing wallet found — derive new keys deterministically from seed
+    // (works for wallets created with the new deterministic system)
     const keys = await deriveKeyFromSeed(phrase);
     this.wallet = {
       address: keys.address,
@@ -258,6 +298,7 @@ export class DiaDemNode {
       privateKey: keys.privateKey,
       seedPhrase: phrase,
       createdAt: Date.now(),
+      _derivedFromSeed: true, // flag: this was derived, not restored from backup
     };
     KeyStore.saveWallet(this.wallet);
     await this._reinitAfterImport();
@@ -299,7 +340,8 @@ export class DiaDemNode {
     await this.blockchain.init(this.wallet.address);
 
     if (this.signaling) this.signaling.disconnect();
-    this.network = new PeerNetwork(this.wallet.address);
+    const riInstanceId = this.wallet.address + '-' + Math.random().toString(36).slice(2, 8);
+    this.network = new PeerNetwork(riInstanceId);
     this.cas.attachNetwork(this.network);
     this.protocol = new Protocol(this.network, this.blockchain);
     this.protocol.onStateSync = () => {
@@ -708,6 +750,22 @@ export class DiaDemNode {
       type: TX_TYPES.STORY,
       from: this.wallet.address,
       data: storyData,
+      nonce: Date.now(),
+    });
+    await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
+    await this.blockchain.addTransaction(tx);
+    this.protocol.broadcastTransaction(tx);
+    this.emit('stateChange');
+    return tx;
+  }
+
+  /** Delete a story */
+  async deleteStory(storyId) {
+    this._requireWallet();
+    const tx = new Transaction({
+      type: TX_TYPES.DELETE_STORY,
+      from: this.wallet.address,
+      data: { storyId },
       nonce: Date.now(),
     });
     await tx.sign(this.wallet.privateKey, this.wallet.publicKey);

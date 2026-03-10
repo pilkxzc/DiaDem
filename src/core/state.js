@@ -211,6 +211,9 @@ export class WorldState {
       case TX_TYPES.STORY:
       case 'story':
         return this._applyStory(tx);
+      case TX_TYPES.DELETE_STORY:
+      case 'delete_story':
+        return this._applyDeleteStory(tx);
       case TX_TYPES.DIRECT_MESSAGE:
       case 'direct_message':
         return this._applyDirectMessage(tx);
@@ -587,6 +590,19 @@ export class WorldState {
     });
     this.stories.set(tx.from, stories);
     this._addReputation(tx.from, 0.3);
+    this._recordTx(tx.from, tx);
+    return true;
+  }
+
+  _applyDeleteStory(tx) {
+    const storyId = tx.data?.storyId;
+    if (!storyId) return false;
+    const stories = this.stories.get(tx.from);
+    if (!stories) return false;
+    const idx = stories.findIndex(s => s.id === storyId);
+    if (idx < 0) return false;
+    if (stories[idx].author !== tx.from) return false;
+    stories.splice(idx, 1);
     this._recordTx(tx.from, tx);
     return true;
   }

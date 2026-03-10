@@ -138,60 +138,51 @@ export function validateSeedPhrase(phrase) {
 }
 
 /** Derive ECDSA P-256 keypair deterministically from a seed phrase.
- *  Uses PBKDF2 to derive key material, then imports as ECDSA private key. */
+ *  Uses PBKDF2 to derive a 32-byte private scalar, then constructs a PKCS#8
+ *  DER-encoded key to import via Web Crypto (which computes the public point). */
 export async function deriveKeyFromSeed(seedPhrase) {
   const phrase = Array.isArray(seedPhrase) ? seedPhrase.join(' ') : seedPhrase.trim();
 
-  // Derive 32 bytes via PBKDF2(SHA-256, seed, "diadem-p256", 100000)
+  // Derive 32 bytes via PBKDF2(SHA-256, seed, "diadem-p256-v1", 100000)
   const enc = new TextEncoder();
   const baseKey = await crypto.subtle.importKey('raw', enc.encode(phrase), 'PBKDF2', false, ['deriveBits']);
-  const derived = await crypto.subtle.deriveBits(
+  const derived = new Uint8Array(await crypto.subtle.deriveBits(
     { name: 'PBKDF2', hash: 'SHA-256', salt: enc.encode('diadem-p256-v1'), iterations: 100000 },
     baseKey,
     256
-  );
+  ));
 
-  // Use derived 32 bytes as the "d" parameter of P-256 private key (JWK format)
-  // P-256 private key is a 32-byte scalar
-  const dBytes = new Uint8Array(derived);
-  const dB64 = btoa(String.fromCharCode(...dBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+  // P-256 curve order n = FFFFFFFF00000000FFFFFFFFFFFFFFFFBCE6FAADA7179E84F3B9CAC2FC632551
+  // Ensure scalar < n by setting top bit to 0 (guarantees < n since n starts with FF...)
+  derived[0] &= 0x7F;
+  // Also ensure non-zero
+  if (derived.every(b => b === 0)) derived[31] = 1;
 
-  // Import as JWK private key to compute the public point
-  // We need to use a workaround: generate a key, then re-import with our "d" value
-  // First, generate a throwaway key to get the structure
-  const tempPair = await crypto.subtle.generateKey(ALGO, true, ['sign', 'verify']);
-  const tempJwk = await crypto.subtle.exportKey('jwk', tempPair.privateKey);
+  // Build PKCS#8 DER for P-256 private key (fixed structure, only the 32-byte scalar changes)
+  // Structure: SEQUENCE { version INTEGER 0, AlgorithmIdentifier { OID ecPublicKey, OID P-256 }, OCTET STRING { SEQUENCE { version 1, OCTET STRING d[32] } } }
+  const pkcs8Header = new Uint8Array([
+    0x30, 0x41, // SEQUENCE, 65 bytes
+      0x02, 0x01, 0x00, // INTEGER 0 (version)
+      0x30, 0x13, // SEQUENCE (AlgorithmIdentifier)
+        0x06, 0x07, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x02, 0x01, // OID 1.2.840.10045.2.1 (ecPublicKey)
+        0x06, 0x08, 0x2a, 0x86, 0x48, 0xce, 0x3d, 0x03, 0x01, 0x07, // OID 1.2.840.10045.3.1.7 (P-256)
+      0x04, 0x27, // OCTET STRING, 39 bytes
+        0x30, 0x25, // SEQUENCE, 37 bytes
+          0x02, 0x01, 0x01, // INTEGER 1 (version)
+          0x04, 0x20, // OCTET STRING, 32 bytes (private key d)
+  ]);
+  const pkcs8 = new Uint8Array(pkcs8Header.length + 32);
+  pkcs8.set(pkcs8Header);
+  pkcs8.set(derived, pkcs8Header.length);
 
-  // Replace d with our derived value
-  tempJwk.d = dB64;
-
-  // Try to import — if d is out of range for P-256, hash again to reduce
-  let privateKey, publicKeyRaw;
-  try {
-    privateKey = await crypto.subtle.importKey('jwk', tempJwk, ALGO, true, ['sign']);
-    // Derive matching public key
-    const pubJwk = { ...tempJwk };
-    delete pubJwk.d;
-    pubJwk.key_ops = ['verify'];
-    const publicKey = await crypto.subtle.importKey('jwk', pubJwk, ALGO, true, ['verify']);
-    publicKeyRaw = await crypto.subtle.exportKey('raw', publicKey);
-  } catch {
-    // If d is invalid for P-256 curve order, hash it to get valid scalar
-    const h = await crypto.subtle.digest('SHA-256', derived);
-    const hBytes = new Uint8Array(h);
-    // Ensure < curve order by zeroing top bit
-    hBytes[0] &= 0x7F;
-    const dB64v2 = btoa(String.fromCharCode(...hBytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-    tempJwk.d = dB64v2;
-    privateKey = await crypto.subtle.importKey('jwk', tempJwk, ALGO, true, ['sign']);
-    const pubJwk = { ...tempJwk };
-    delete pubJwk.d;
-    pubJwk.key_ops = ['verify'];
-    const publicKey = await crypto.subtle.importKey('jwk', pubJwk, ALGO, true, ['verify']);
-    publicKeyRaw = await crypto.subtle.exportKey('raw', publicKey);
-  }
-
+  // Import as ECDSA private key — Web Crypto will compute the public point from d
+  const privateKey = await crypto.subtle.importKey('pkcs8', pkcs8, ALGO, true, ['sign']);
   const privateKeyJwk = await crypto.subtle.exportKey('jwk', privateKey);
+
+  // Derive public key from the JWK (remove d to get public-only JWK)
+  const pubJwk = { kty: privateKeyJwk.kty, crv: privateKeyJwk.crv, x: privateKeyJwk.x, y: privateKeyJwk.y };
+  const publicKey = await crypto.subtle.importKey('jwk', pubJwk, ALGO, true, ['verify']);
+  const publicKeyRaw = await crypto.subtle.exportKey('raw', publicKey);
   const publicKeyHex = bufToHex(publicKeyRaw);
   const address = '0x' + (await sha256(publicKeyHex)).slice(0, 40);
 

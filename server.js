@@ -1,17 +1,18 @@
 /**
  * DiaDem Server
- * Minimal HTTP server + WebSocket signaling for P2P peer discovery.
+ * HTTP server + WebSocket signaling + Server Node for P2P state sync.
  *
- * The HTTP server serves the static frontend.
- * The WebSocket server acts as a signaling relay so peers can
- * automatically discover each other and exchange WebRTC offers/answers
- * without manual copy-paste.
+ * The server acts as a persistent node that:
+ * 1. Serves the static frontend
+ * 2. Relays WebSocket signaling for peer discovery / WebRTC
+ * 3. Stores the latest blockchain state from peers (in-memory + disk)
+ * 4. Sends stored state to newly connecting peers (bootstrap node)
  *
  * Usage: node server.js [--port PORT] [--dev]
  */
 
 import { createServer } from 'http';
-import { readFile, stat } from 'fs/promises';
+import { readFile, writeFile, stat, mkdir } from 'fs/promises';
 import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
 import { WebSocketServer } from 'ws';
@@ -21,6 +22,49 @@ const __dirname = fileURLToPath(new URL('.', import.meta.url));
 const args = process.argv.slice(2);
 const PORT = parseInt(args.find((_, i, a) => a[i - 1] === '--port') || '3000');
 const DEV = args.includes('--dev');
+
+// ─── Server Node State ──────────────────────────────────────
+// The server stores the latest state received from any peer.
+// This acts as a "bootstrap node" for new peers.
+const STATE_FILE = join(__dirname, 'data', 'server-state.json');
+let serverState = null;       // latest state JSON (already serialized)
+let serverStateHeight = 0;    // track best known chain height
+const SERVER_NODE_ID = 'server-node-' + Math.random().toString(36).slice(2, 8);
+
+async function loadServerState() {
+  try {
+    const data = await readFile(STATE_FILE, 'utf-8');
+    const parsed = JSON.parse(data);
+    serverState = parsed.state || null;
+    serverStateHeight = parsed.height || 0;
+    console.log(`[Node] Loaded saved state: height ${serverStateHeight}`);
+  } catch {
+    console.log('[Node] No saved state found, starting fresh');
+  }
+}
+
+async function saveServerState() {
+  try {
+    await mkdir(join(__dirname, 'data'), { recursive: true });
+    await writeFile(STATE_FILE, JSON.stringify({
+      state: serverState,
+      height: serverStateHeight,
+      savedAt: Date.now(),
+    }));
+  } catch (e) {
+    console.warn('[Node] Failed to save state:', e.message);
+  }
+}
+
+// Throttle disk writes (max once per 5 seconds)
+let _saveTimer = null;
+function scheduleSave() {
+  if (_saveTimer) return;
+  _saveTimer = setTimeout(() => {
+    _saveTimer = null;
+    saveServerState();
+  }, 5000);
+}
 
 // ─── MIME Types ──────────────────────────────────────────────
 const MIME = {
@@ -65,6 +109,8 @@ const server = createServer(async (req, res) => {
       version: '0.1.0',
       network: 'testnet',
       peers: connectedPeers.size,
+      stateHeight: serverStateHeight,
+      serverNodeId: SERVER_NODE_ID,
       uptime: process.uptime(),
     }));
     return;
@@ -136,13 +182,65 @@ const server = createServer(async (req, res) => {
   }
 });
 
-// ─── WebSocket Signaling Server ──────────────────────────────
-// Handles peer discovery and WebRTC signaling relay.
-// Peers connect, announce themselves, and the server relays
-// offers/answers between them for automatic P2P connection.
+// ─── WebSocket Signaling Server + Node ───────────────────────
+// Handles peer discovery, WebRTC signaling relay,
+// and acts as a persistent node for state synchronization.
 
 const wss = new WebSocketServer({ server, path: '/signal' });
 const connectedPeers = new Map(); // peerId -> { ws, address, connectedAt }
+
+/** Send the server's stored state to a specific peer via WS */
+function sendServerStateToPeer(ws, peerId) {
+  if (!serverState || ws.readyState !== 1) return;
+
+  // Send as a relay message from the server node
+  ws.send(JSON.stringify({
+    type: 'relay',
+    from: SERVER_NODE_ID,
+    payload: {
+      type: 'state_sync',
+      payload: { state: serverState },
+      from: SERVER_NODE_ID,
+      timestamp: Date.now(),
+    },
+  }));
+  console.log(`[Node] Sent stored state (height ${serverStateHeight}) to ${peerId.slice(0, 12)}...`);
+}
+
+/** Process a broadcast payload — if it's a state_sync, store it on the server */
+function processRelayedPayload(payload) {
+  if (!payload || !payload.type) return;
+
+  // Store STATE_SYNC data if it has higher block height
+  if (payload.type === 'state_sync' && payload.payload?.state) {
+    const remoteState = payload.payload.state;
+    const remoteHeight = remoteState.blockHeight || 0;
+
+    if (remoteHeight > serverStateHeight || !serverState) {
+      serverState = remoteState;
+      serverStateHeight = remoteHeight;
+      console.log(`[Node] State updated: height ${serverStateHeight}, posts: ${Object.keys(remoteState.posts || {}).length}`);
+      scheduleSave();
+    } else if (remoteHeight === serverStateHeight && serverState) {
+      // Same height — merge: take the state with more data
+      const localPosts = Object.keys(serverState.posts || {}).length;
+      const remotePosts = Object.keys(remoteState.posts || {}).length;
+      if (remotePosts > localPosts) {
+        serverState = remoteState;
+        console.log(`[Node] State merged (same height ${serverStateHeight}, more posts: ${remotePosts})`);
+        scheduleSave();
+      }
+    }
+  }
+
+  // Also store new blocks and transactions
+  if (payload.type === 'new_block' && payload.payload?.block) {
+    const block = payload.payload.block;
+    if (block.index > serverStateHeight) {
+      serverStateHeight = block.index;
+    }
+  }
+}
 
 wss.on('connection', (ws, req) => {
   let peerId = null;
@@ -165,7 +263,7 @@ wss.on('connection', (ws, req) => {
           chainHeight: msg.chainHeight || 0,
         });
 
-        // Send back the list of other peers
+        // Send back the list of other peers (include server node as a virtual peer)
         const otherPeers = [];
         for (const [id, peer] of connectedPeers) {
           if (id !== peerId) {
@@ -176,6 +274,12 @@ wss.on('connection', (ws, req) => {
             });
           }
         }
+        // Add server node itself as a peer so clients know it exists
+        otherPeers.push({
+          id: SERVER_NODE_ID,
+          address: 'server',
+          chainHeight: serverStateHeight,
+        });
         ws.send(JSON.stringify({
           type: 'peers',
           peers: otherPeers,
@@ -195,7 +299,11 @@ wss.on('connection', (ws, req) => {
           }
         }
 
-        console.log(`[Signal] Peer joined: ${peerId.slice(0, 12)}... (${connectedPeers.size} total)`);
+        console.log(`[Signal] Peer joined: ${peerId.slice(0, 16)}... (${connectedPeers.size} total)`);
+
+        // Server acts as a node: send stored state to the new peer
+        // Delay slightly to let the client finish its own setup
+        setTimeout(() => sendServerStateToPeer(ws, peerId), 500);
         break;
       }
 
@@ -245,8 +353,12 @@ wss.on('connection', (ws, req) => {
         break;
       }
 
-      // Broadcast a message to all peers (for CAS data announcements)
+      // Broadcast a message to all peers (for CAS data, state sync, etc.)
       case 'broadcast': {
+        // Server node: intercept and store relevant data
+        processRelayedPayload(msg.payload);
+
+        // Relay to all other peers
         for (const [id, peer] of connectedPeers) {
           if (id !== peerId && peer.ws.readyState === 1) {
             peer.ws.send(JSON.stringify({
@@ -273,7 +385,7 @@ wss.on('connection', (ws, req) => {
           }));
         }
       }
-      console.log(`[Signal] Peer left: ${peerId.slice(0, 12)}... (${connectedPeers.size} total)`);
+      console.log(`[Signal] Peer left: ${peerId.slice(0, 16)}... (${connectedPeers.size} total)`);
     }
   });
 
@@ -292,6 +404,8 @@ setInterval(() => {
 }, 30000);
 
 // ─── Start ───────────────────────────────────────────────────
+await loadServerState();
+
 server.listen(PORT, () => {
   console.log('');
   console.log('  ╔══════════════════════════════════════════╗');
@@ -301,6 +415,8 @@ server.listen(PORT, () => {
   console.log(`  ║  Signal:    ws://localhost:${PORT}/signal    ║`);
   console.log(`  ║  Mode:      ${DEV ? 'Development' : 'Production '}              ║`);
   console.log('  ║  Network:   DiaDem Testnet               ║');
+  console.log(`  ║  Node:      ${SERVER_NODE_ID.padEnd(28)}║`);
+  console.log(`  ║  State:     height ${String(serverStateHeight).padEnd(21)}║`);
   console.log('  ╚══════════════════════════════════════════╝');
   console.log('');
 });

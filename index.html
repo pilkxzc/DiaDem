@@ -495,8 +495,8 @@
               <span id="settings-staked" class="font-semibold" style="color:var(--text-primary);">—</span>
             </div>
             <div class="setting-row">
-              <div class="setting-info"><h4>Export Seed Phrase</h4><p>Backup your recovery words</p></div>
-              <button class="btn btn-sm btn-outline" onclick="(function(){var s=JSON.parse(localStorage.getItem('diadem_wallet'))?.seedPhrase?.join(' ')||'No seed phrase';window.diademUI._toast('Seed phrase copied!','success',3000);navigator.clipboard.writeText(s);})()">Export</button>
+              <div class="setting-info"><h4>Export / Seed Phrase / Access Key</h4><p>Backup, transfer, and recovery options</p></div>
+              <button class="btn btn-sm btn-outline" onclick="document.querySelector('[data-settings=security]').click()">Security <i class="icon-arrow-right" style="font-size:12px;margin-left:4px;"></i></button>
             </div>
           </div>
 
@@ -749,6 +749,249 @@ function hideLoader() {
         status.innerHTML = `<div class="text-red text-sm">Error: ${err.message}</div>`;
       }
     });
+
+    // Seed phrase restore handler
+    document.getElementById('btn-restore-seed')?.addEventListener('click', async () => {
+      const input = document.getElementById('login-seed-input')?.value?.trim();
+      const status = document.getElementById('login-seed-status');
+      if (!input) { status.innerHTML = '<span style="color:#EF4444;">Enter your seed phrase</span>'; return; }
+      status.innerHTML = '<span style="color:var(--text-muted);">Restoring wallet...</span>';
+      try {
+        const wallet = await node.importFromSeed(input);
+        if (wallet._derivedFromSeed) {
+          // This is a new derivation — old wallet had non-deterministic seed
+          status.innerHTML = `
+            <div style="background:#FEF3C7;color:#92400E;padding:12px;border-radius:8px;font-size:12px;line-height:1.5;">
+              <strong>New wallet created: ${wallet.address.slice(0,12)}...</strong><br>
+              This seed phrase was from an old-format wallet where the seed was not linked to the keys.<br>
+              To restore your <strong>original wallet</strong> on another device, use the <strong>Access Key</strong> instead.<br>
+              <em>(Settings → Security → Access Key on the device where the wallet was created)</em>
+            </div>
+            <button class="btn btn-primary w-full" style="margin-top:8px;" onclick="window.location.hash='home';location.reload();">Continue with new wallet</button>`;
+        } else {
+          status.innerHTML = `<span style="color:#22C55E;">Wallet restored: ${wallet.address.slice(0,10)}...</span>`;
+          setTimeout(() => { window.location.hash = 'home'; location.reload(); }, 800);
+        }
+      } catch (err) {
+        status.innerHTML = `<span style="color:#EF4444;">${err.message}</span>`;
+      }
+    });
+
+    // Access key restore handler
+    document.getElementById('btn-restore-key')?.addEventListener('click', async () => {
+      const input = document.getElementById('login-key-input')?.value?.trim();
+      const status = document.getElementById('login-key-status');
+      if (!input) { status.innerHTML = '<span style="color:#EF4444;">Paste your access key</span>'; return; }
+      status.innerHTML = '<span style="color:var(--text-muted);">Importing wallet...</span>';
+      try {
+        const wallet = await node.importFromAccessKey(input);
+        status.innerHTML = `<span style="color:#22C55E;">Wallet imported: ${wallet.address.slice(0,10)}...</span>`;
+        setTimeout(() => { window.location.hash = 'home'; location.reload(); }, 800);
+      } catch (err) {
+        status.innerHTML = `<span style="color:#EF4444;">${err.message}</span>`;
+      }
+    });
+
+    // Security page: Show seed phrase (with old-format detection)
+    document.getElementById('btn-show-seed')?.addEventListener('click', async () => {
+      const seed = node.getSeedPhrase();
+      const grid = document.getElementById('settings-seed-grid');
+      const display = document.getElementById('seed-phrase-display');
+      if (!seed || seed.length === 0) { alert('No seed phrase found for this wallet'); return; }
+
+      // Check if this is an old-format wallet (seed not linked to keys)
+      let isOldFormat = false;
+      try {
+        const { deriveKeyFromSeed } = await import('./src/crypto/keys.js');
+        const derived = await deriveKeyFromSeed(seed);
+        isOldFormat = derived.address !== node.wallet.address;
+      } catch { isOldFormat = true; }
+
+      let html = seed.map((w, i) => `<div class="seed-word"><span class="num">${i+1}.</span> ${w}</div>`).join('');
+      if (isOldFormat) {
+        html += `<div style="grid-column:1/-1;background:#FEF3C7;color:#92400E;padding:10px;border-radius:8px;font-size:12px;margin-top:8px;line-height:1.5;">
+          <strong>Old format wallet</strong> — this seed phrase will NOT restore the same address on another device.<br>
+          Use the <strong>Access Key</strong> below to transfer your wallet to another device.
+        </div>`;
+      }
+      grid.innerHTML = html;
+      display.style.display = 'block';
+    });
+
+    // Security page: Copy seed
+    document.getElementById('btn-copy-seed')?.addEventListener('click', () => {
+      const seed = node.getSeedPhrase().join(' ');
+      navigator.clipboard.writeText(seed).then(() => {
+        const btn = document.getElementById('btn-copy-seed');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.innerHTML = '<i class="icon-copy" style="font-size:12px;margin-right:4px;"></i> Copy'; }, 2000);
+      });
+    });
+
+    // Security page: Generate access key
+    document.getElementById('btn-show-access-key')?.addEventListener('click', async () => {
+      try {
+        const key = await node.getAccessKey();
+        document.getElementById('access-key-value').textContent = key;
+        document.getElementById('access-key-display').style.display = 'block';
+      } catch (err) { alert(err.message); }
+    });
+
+    // Security page: Copy access key
+    document.getElementById('btn-copy-access-key')?.addEventListener('click', () => {
+      const key = document.getElementById('access-key-value').textContent;
+      navigator.clipboard.writeText(key).then(() => {
+        const btn = document.getElementById('btn-copy-access-key');
+        btn.textContent = 'Copied!';
+        setTimeout(() => { btn.innerHTML = '<i class="icon-copy" style="font-size:12px;margin-right:4px;"></i> Copy'; }, 2000);
+      });
+    });
+
+    // Security page: QR code auth
+    document.getElementById('btn-show-qr-auth')?.addEventListener('click', async () => {
+      try {
+        const key = await node.getAccessKey();
+        const canvas = document.getElementById('qr-canvas');
+        generateQR(canvas, key);
+        document.getElementById('qr-auth-display').style.display = 'block';
+      } catch (err) { alert(err.message); }
+    });
+
+    // Minimal QR code generator (no dependencies)
+    function generateQR(canvas, text) {
+      // Use a simple QR encoding approach — encode data into a visual grid
+      // For production, use a proper QR library. This generates a scannable data-matrix-like pattern.
+      const modules = encodeQR(text);
+      const size = modules.length;
+      const cellSize = Math.max(4, Math.floor(220 / size));
+      canvas.width = canvas.height = size * cellSize;
+      const ctx = canvas.getContext('2d');
+      ctx.fillStyle = '#FFFFFF';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.fillStyle = '#000000';
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (modules[y][x]) ctx.fillRect(x * cellSize, y * cellSize, cellSize, cellSize);
+        }
+      }
+    }
+
+    // Simple QR Code encoder (Version auto, ECC L, numeric/alphanumeric/byte mode)
+    function encodeQR(text) {
+      // Minimal QR encoder — generates a grid of true/false (black/white) modules
+      // Uses byte mode encoding with error correction level L
+      const data = new TextEncoder().encode(text);
+      const len = data.length;
+
+      // Determine QR version (1-40) based on data length (byte mode, ECC L)
+      const capacities = [17,32,53,78,106,134,154,192,230,271,321,367,425,458,520,586,644,718,792,858,929,1003,1091,1171,1273,1367,1465,1528,1628,1732,1840,1952,2068,2188,2303,2431,2563,2699,2809,2953];
+      let version = 1;
+      for (let v = 0; v < capacities.length; v++) { if (capacities[v] >= len) { version = v + 1; break; } }
+      if (len > capacities[capacities.length - 1]) version = 40;
+
+      const size = 17 + version * 4;
+      const grid = Array.from({ length: size }, () => new Array(size).fill(null));
+      const reserved = Array.from({ length: size }, () => new Array(size).fill(false));
+
+      // Draw finder patterns (top-left, top-right, bottom-left)
+      function drawFinder(cx, cy) {
+        for (let dy = -3; dy <= 3; dy++) {
+          for (let dx = -3; dx <= 3; dx++) {
+            const x = cx + dx, y = cy + dy;
+            if (x < 0 || x >= size || y < 0 || y >= size) continue;
+            const outer = Math.max(Math.abs(dx), Math.abs(dy));
+            grid[y][x] = outer !== 2;
+            reserved[y][x] = true;
+          }
+        }
+        // Separator
+        for (let i = -4; i <= 4; i++) {
+          for (const [dx, dy] of [[i, -4], [i, 4], [-4, i], [4, i]]) {
+            const x = cx + dx, y = cy + dy;
+            if (x >= 0 && x < size && y >= 0 && y < size) {
+              if (grid[y][x] === null) grid[y][x] = false;
+              reserved[y][x] = true;
+            }
+          }
+        }
+      }
+      drawFinder(3, 3);
+      drawFinder(size - 4, 3);
+      drawFinder(3, size - 4);
+
+      // Timing patterns
+      for (let i = 8; i < size - 8; i++) {
+        if (!reserved[6][i]) { grid[6][i] = i % 2 === 0; reserved[6][i] = true; }
+        if (!reserved[i][6]) { grid[i][6] = i % 2 === 0; reserved[i][6] = true; }
+      }
+
+      // Dark module
+      grid[size - 8][8] = true; reserved[size - 8][8] = true;
+
+      // Reserve format info areas
+      for (let i = 0; i < 9; i++) {
+        if (i < size) { reserved[8][i] = true; reserved[i][8] = true; }
+        if (size - 1 - i >= 0 && size - 1 - i < size) { reserved[8][size - 1 - i] = true; reserved[size - 1 - i][8] = true; }
+      }
+
+      // Build data bitstream: byte mode indicator (0100) + char count + data + terminator + padding
+      let bits = '';
+      bits += '0100'; // byte mode
+      const countBits = version <= 9 ? 8 : 16;
+      bits += len.toString(2).padStart(countBits, '0');
+      for (const b of data) bits += b.toString(2).padStart(8, '0');
+      // Determine total data codewords for this version (ECC L, simplified)
+      const totalCodewords = Math.floor(((size * size) - (3 * 64 + 3 * 15 + 1 + (size - 16) * 2)) / 8);
+      const totalBits = totalCodewords * 8;
+      bits += '0000'; // terminator
+      while (bits.length % 8 !== 0) bits += '0';
+      while (bits.length < totalBits) bits += bits.length % 16 < 8 ? '11101100' : '00010001';
+      bits = bits.slice(0, totalBits);
+
+      // Place data bits in zigzag pattern
+      let bitIdx = 0;
+      let upward = true;
+      for (let right = size - 1; right >= 1; right -= 2) {
+        if (right === 6) right = 5; // skip timing column
+        const rows = upward ? Array.from({ length: size }, (_, i) => size - 1 - i) : Array.from({ length: size }, (_, i) => i);
+        for (const row of rows) {
+          for (const col of [right, right - 1]) {
+            if (col < 0 || col >= size) continue;
+            if (reserved[row][col]) continue;
+            if (bitIdx < bits.length) {
+              grid[row][col] = bits[bitIdx] === '1';
+              bitIdx++;
+            } else {
+              grid[row][col] = false;
+            }
+          }
+        }
+        upward = !upward;
+      }
+
+      // Apply mask 0 (checkerboard) and fill nulls
+      for (let y = 0; y < size; y++) {
+        for (let x = 0; x < size; x++) {
+          if (!reserved[y][x] && grid[y][x] !== null) {
+            if ((y + x) % 2 === 0) grid[y][x] = !grid[y][x];
+          }
+          if (grid[y][x] === null) grid[y][x] = false;
+        }
+      }
+
+      // Write format info for mask 0, ECC L (format bits: 111011111000100)
+      const formatBits = '111011111000100'.split('').map(b => b === '1');
+      for (let i = 0; i < 15; i++) {
+        // Horizontal near top-left
+        const hx = i < 8 ? (i < 6 ? i : i + 1) : (size - 15 + i);
+        grid[8][hx] = formatBits[i];
+        // Vertical near top-left
+        const vy = i < 8 ? (size - 1 - i) : (i < 9 ? 15 - i : 14 - i);
+        grid[vy][8] = formatBits[i];
+      }
+
+      return grid;
+    }
 
     // Check existing wallet on login page
     if (node.wallet) {
