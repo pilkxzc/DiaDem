@@ -246,9 +246,36 @@ export class Blockchain {
       const block = blockData instanceof Block ? blockData : Block.fromJSON(blockData);
       blocks.push(block);
     }
+
+    // Long-range attack prevention: reject chains that diverge more than 100 blocks
+    // from our current chain (unless we're bootstrapping with < 10 blocks)
+    if (this.chain.length > 10) {
+      const maxDivergence = 100;
+      let commonAncestor = -1;
+      const checkLimit = Math.min(this.chain.length, blocks.length);
+      for (let i = 0; i < checkLimit; i++) {
+        if (this.chain[i].hash === blocks[i].hash) {
+          commonAncestor = i;
+        } else {
+          break;
+        }
+      }
+      const divergence = this.chain.length - (commonAncestor + 1);
+      if (divergence > maxDivergence) {
+        console.warn(`[Blockchain] replaceChain: rejected — diverges ${divergence} blocks (max ${maxDivergence})`);
+        return false;
+      }
+    }
+
     for (let i = 1; i < blocks.length; i++) {
       if (blocks[i].previousHash !== blocks[i - 1].hash) {
         console.warn(`[Blockchain] replaceChain: invalid link at block ${i}`);
+        return false;
+      }
+
+      // Validate block timestamps (no future blocks, no extreme time jumps)
+      if (blocks[i].timestamp > Date.now() + 60000) {
+        console.warn(`[Blockchain] replaceChain: block ${i} has future timestamp`);
         return false;
       }
     }

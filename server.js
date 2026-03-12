@@ -194,6 +194,8 @@ const rateLimits = new Map(); // ip -> { count, resetAt }
 const RATE_LIMIT_WINDOW = 10000; // 10 seconds
 const RATE_LIMIT_MAX = 100; // max messages per window
 const MAX_MESSAGE_SIZE = 5 * 1024 * 1024; // 5MB max message
+const MAX_PEERS = 500; // max simultaneous connections
+const MAX_PEER_ID_LENGTH = 128; // prevent absurdly long peerIds
 
 function checkRateLimit(ip) {
   const now = Date.now();
@@ -241,6 +243,20 @@ function processRelayedPayload(payload) {
     const remoteState = payload.payload.state;
     const remoteHeight = remoteState.blockHeight || 0;
 
+    // Sanity checks: reject absurd heights or jumps
+    if (typeof remoteHeight !== 'number' || remoteHeight < 0 || remoteHeight > 1e9) return;
+    // Prevent massive height jumps (max 1000 blocks ahead at a time)
+    if (serverStateHeight > 0 && remoteHeight > serverStateHeight + 1000) {
+      console.warn(`[Node] Rejected state sync: height ${remoteHeight} too far ahead of ${serverStateHeight}`);
+      return;
+    }
+    // Limit state size (reject if serialized state > 50MB to prevent memory exhaustion)
+    const stateStr = JSON.stringify(remoteState);
+    if (stateStr.length > 50 * 1024 * 1024) {
+      console.warn(`[Node] Rejected state sync: state too large (${(stateStr.length / 1024 / 1024).toFixed(1)}MB)`);
+      return;
+    }
+
     if (remoteHeight > serverStateHeight || !serverState) {
       serverState = remoteState;
       serverStateHeight = remoteHeight;
@@ -261,7 +277,7 @@ function processRelayedPayload(payload) {
   // Also store new blocks and transactions
   if (payload.type === 'new_block' && payload.payload?.block) {
     const block = payload.payload.block;
-    if (block.index > serverStateHeight) {
+    if (typeof block.index === 'number' && block.index > serverStateHeight && block.index < serverStateHeight + 1000) {
       serverStateHeight = block.index;
     }
   }
@@ -272,14 +288,40 @@ wss.on('connection', (ws, req) => {
   const ip = req.headers['x-forwarded-for'] || req.socket.remoteAddress;
 
   ws.on('message', (data) => {
+    // Rate limiting
+    if (!checkRateLimit(ip)) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Rate limit exceeded' }));
+      return;
+    }
+
+    // Message size check
+    if (data.length > MAX_MESSAGE_SIZE) {
+      ws.send(JSON.stringify({ type: 'error', message: 'Message too large' }));
+      return;
+    }
+
     let msg;
     try {
       msg = JSON.parse(data.toString());
     } catch { return; }
 
+    // Validate message structure
+    if (!msg || typeof msg.type !== 'string') return;
+
     switch (msg.type) {
       // Peer announces itself
       case 'announce': {
+        // Validate peerId
+        if (!msg.peerId || typeof msg.peerId !== 'string' || msg.peerId.length > MAX_PEER_ID_LENGTH) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Invalid peerId' }));
+          return;
+        }
+        // Connection limit
+        if (connectedPeers.size >= MAX_PEERS && !connectedPeers.has(msg.peerId)) {
+          ws.send(JSON.stringify({ type: 'error', message: 'Server full' }));
+          return;
+        }
+
         peerId = msg.peerId;
         connectedPeers.set(peerId, {
           ws,
