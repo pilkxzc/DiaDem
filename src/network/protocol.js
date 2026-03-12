@@ -169,22 +169,20 @@ export class Protocol {
     this.network.on(MSG_TYPES.DM_INSTANT, (peerId, payload) => {
       if (!payload.msg) return;
       const m = payload.msg;
-      // Only accept if we are the recipient (or sender on another tab)
+      // Only accept if we are the sender or recipient
+      const myAddr = this.blockchain.state.balances.size > 0
+        ? [...this.blockchain.state.balances.keys()].find(a => a === m.from || a === m.to)
+        : null;
+      if (!myAddr && m.from !== this.network.nodeId?.replace(/-[a-z0-9]{6}$/, '')) return;
+
       const key = [m.from, m.to].sort().join(':');
       const dm = this.blockchain.state.directMessages;
       if (!dm.has(key)) dm.set(key, []);
       const existing = dm.get(key);
       if (existing.some(e => e.id === m.id)) return; // deduplicate
       existing.push(m);
-      // Apply payment balance change optimistically
-      if (m.payment && m.payment.amount > 0) {
-        const fromBal = this.blockchain.state.getBalance(m.from);
-        const toBal = this.blockchain.state.getBalance(m.to);
-        if (fromBal >= m.payment.amount) {
-          this.blockchain.state.balances.set(m.from, fromBal - m.payment.amount);
-          this.blockchain.state.balances.set(m.to, toBal + m.payment.amount);
-        }
-      }
+      // Balance changes for DM payments are NOT applied here (security).
+      // They will be applied when the signed transaction is processed on-chain.
       if (this.onStateSync) this.onStateSync();
     });
 
@@ -330,10 +328,27 @@ export class Protocol {
       }
     }
 
-    // 7. Balances (take higher)
-    if (remoteState.balances) {
-      for (const [addr, balance] of remoteState.balances) {
-        if (balance > local.getBalance(addr)) { local.balances.set(addr, balance); changed = true; }
+    // 7. Balances — accept from peer with higher blockHeight (authoritative state).
+    // If remote has higher block height, their balances are more up-to-date.
+    // Otherwise keep local balances (prevents random peers from inflating).
+    if (remoteState.blockHeight > local.blockHeight && remoteState.balances) {
+      for (const [addr, bal] of remoteState.balances) {
+        const localBal = local.getBalance(addr);
+        if (bal !== localBal) {
+          local.balances.set(addr, bal);
+          changed = true;
+        }
+      }
+    }
+
+    // 7b. Faucet claims — always merge (additive, prevents double-claiming)
+    if (remoteState.faucetClaims) {
+      if (!local.faucetClaims) local.faucetClaims = new Set();
+      for (const addr of remoteState.faucetClaims) {
+        if (!local.faucetClaims.has(addr)) {
+          local.faucetClaims.add(addr);
+          changed = true;
+        }
       }
     }
 

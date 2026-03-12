@@ -78,11 +78,6 @@ export class DiaDemNode {
     // Restore persisted state (includes immediate tx changes + saved messages)
     await this._loadState();
 
-    // Claim faucet DDM if new wallet with 0 balance
-    if (this.wallet && this.blockchain.state.getBalance(this.wallet.address) === 0) {
-      await this.blockchain.claimFaucet(this.wallet);
-    }
-
     // Listen for new blocks
     this.blockchain.onBlock(async (block) => {
       // Store block data in CAS
@@ -151,6 +146,17 @@ export class DiaDemNode {
 
     // 10. Announce via BroadcastChannel so other tabs sync
     setTimeout(() => this._broadcastHello(), 500);
+
+    // 11. Delayed faucet claim — wait for state sync from peers first.
+    // If peers send balance > 0 or faucetClaims within 3s, skip.
+    // Only claim if truly a new wallet with no state from network.
+    if (this.wallet) {
+      setTimeout(async () => {
+        await this.blockchain.claimFaucet(this.wallet);
+        this._saveState();
+        this.emit('stateChange');
+      }, 3000);
+    }
 
     this.ready = true;
     console.log('[DiaDem] Node ready!');
@@ -373,8 +379,13 @@ export class DiaDemNode {
     this.blockchain.onTransaction(() => this._saveState());
     this._startConsensus();
 
-    await this.blockchain.claimFaucet(this.wallet);
-    this._saveState();
+    // Delay faucet claim — wait for state sync from peers first.
+    // If state sync arrives with balance > 0, claimFaucet will skip.
+    // If no peers respond within 3s, claim as new wallet.
+    setTimeout(async () => {
+      await this.blockchain.claimFaucet(this.wallet);
+      this._saveState();
+    }, 3000);
 
     setTimeout(() => this._broadcastHello(), 500);
     this.emit('walletCreated', this.wallet);
@@ -1074,6 +1085,10 @@ export class DiaDemNode {
       if (data.state) {
         const { WorldState } = await import('./core/state.js');
         this.blockchain.state = WorldState.fromJSON(data.state);
+        // Rebuild processedTxHashes from restored state to keep dedup in sync
+        if (this.blockchain.state.processedTxs) {
+          this.blockchain.processedTxHashes = new Set(this.blockchain.state.processedTxs);
+        }
         console.log('[DiaDem] State restored from cache');
       }
       return true;

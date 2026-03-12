@@ -9,6 +9,12 @@ import { t, getLang, setLang, getLanguages } from '../i18n.js';
 
 let node = null;
 
+// ─── QR Code Helper ──────────────────────────────────────────
+// Uses server-side /api/qr endpoint (node `qrcode` library) for reliable QR generation.
+function getQrImgUrl(data, size = 300) {
+  return '/api/qr?size=' + size + '&data=' + encodeURIComponent(data);
+}
+
 const LEVEL_COLORS = {
   'Newcomer': '#6B7280', 'Beginner': '#9CA3AF', 'Member': '#3B82F6', 'Active': '#22C55E',
   'Veteran': '#8B5CF6', 'Expert': '#F59E0B', 'Legend': '#EF4444', 'Bronze': '#CD7F32',
@@ -87,8 +93,8 @@ function showConfirm(title, message, onYes, onNo) {
       <div class="confirm-title">${escapeHtml(title)}</div>
       <div class="confirm-msg">${escapeHtml(message)}</div>
       <div class="confirm-actions">
-        <button class="btn btn-outline" id="_confirm-no">Cancel</button>
-        <button class="btn btn-primary" id="_confirm-yes">Confirm</button>
+        <button class="btn btn-outline" id="_confirm-no">${t('confirm_cancel')}</button>
+        <button class="btn btn-primary" id="_confirm-yes">${t('confirm_yes')}</button>
       </div>
     </div>
   `;
@@ -107,8 +113,8 @@ function showPrompt(title, message, placeholder, onDone) {
       <div class="confirm-msg">${escapeHtml(message)}</div>
       <input class="confirm-input" id="_prompt-input" placeholder="${escapeHtml(placeholder || '')}" autofocus>
       <div class="confirm-actions">
-        <button class="btn btn-outline" id="_prompt-cancel">Cancel</button>
-        <button class="btn btn-primary" id="_prompt-ok">OK</button>
+        <button class="btn btn-outline" id="_prompt-cancel">${t('confirm_cancel')}</button>
+        <button class="btn btn-primary" id="_prompt-ok">${t('confirm_ok')}</button>
       </div>
     </div>
   `;
@@ -130,14 +136,14 @@ function showCopyDialog(title, text) {
       <div class="confirm-title">${escapeHtml(title)}</div>
       <textarea class="confirm-input" style="min-height:80px;resize:vertical;font-size:12px;" readonly>${escapeHtml(text)}</textarea>
       <div class="confirm-actions">
-        <button class="btn btn-outline" id="_copy-close">Close</button>
-        <button class="btn btn-primary" id="_copy-btn"><i class="icon-copy" style="margin-right:6px;"></i>Copy</button>
+        <button class="btn btn-outline" id="_copy-close">${t('confirm_close')}</button>
+        <button class="btn btn-primary" id="_copy-btn"><i class="icon-copy" style="margin-right:6px;"></i>${t('confirm_copy')}</button>
       </div>
     </div>
   `;
   document.body.appendChild(overlay);
   overlay.querySelector('#_copy-btn').onclick = () => {
-    navigator.clipboard.writeText(text).then(() => showToast('Copied!', 'success', 2000));
+    navigator.clipboard.writeText(text).then(() => showToast(t('copied'), 'success', 2000));
     overlay.remove();
   };
   overlay.querySelector('#_copy-close').onclick = () => overlay.remove();
@@ -180,7 +186,7 @@ function resizeImage(file, maxW, maxH) {
  * @returns {Promise<string|null>} base64 data URL or null if cancelled
  */
 function showImageEditor(file, opts = {}) {
-  const { cropW = 256, cropH = 256, shape = 'rect', title = 'Edit Image' } = opts;
+  const { cropW = 256, cropH = 256, shape = 'rect', title = t('edit_image') } = opts;
   return new Promise((resolve) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -207,8 +213,8 @@ function showImageEditor(file, opts = {}) {
             <i class="icon-plus" style="font-size:14px;color:var(--text-muted);"></i>
           </div>
           <div style="padding:12px 24px 20px;display:flex;gap:12px;justify-content:flex-end;">
-            <button class="btn btn-outline" id="_crop-cancel">Cancel</button>
-            <button class="btn btn-primary" id="_crop-save">Apply</button>
+            <button class="btn btn-outline" id="_crop-cancel">${t('edit_cancel')}</button>
+            <button class="btn btn-primary" id="_crop-save">${t('edit_apply')}</button>
           </div>
         </div>
       `;
@@ -568,7 +574,7 @@ function updateSidebarInfo() {
     const sigOk = info.network.signaling === 'connected';
     const syncStatus = peers > 0 ? 'synced' : (sigOk ? 'ready' : 'offline');
     const statusColor = syncStatus === 'synced' ? 'var(--green, #22C55E)' : (syncStatus === 'ready' ? 'var(--green, #22C55E)' : 'var(--danger, #EF4444)');
-    const statusLabel = syncStatus === 'synced' ? `${peers} ${peers === 1 ? 'peer' : 'peers'}` : (syncStatus === 'ready' ? (t('online') || 'Online') : t('offline') || 'Offline');
+    const statusLabel = syncStatus === 'synced' ? `${peers} ${peers === 1 ? t('sidebar_peer') : t('sidebar_peers')}` : (syncStatus === 'ready' ? t('online') : t('offline'));
 
     el.innerHTML = `
       <div class="sidebar-connection-bar">
@@ -595,11 +601,11 @@ function updateSidebarInfo() {
         </div>
         <div class="sidebar-stat">
           <div class="sidebar-stat-value">${rep.score.toFixed(0)}</div>
-          <div class="sidebar-stat-label">Rep</div>
+          <div class="sidebar-stat-label">${t('sidebar_rep')}</div>
         </div>
         <div class="sidebar-stat">
           <div class="sidebar-stat-value">${peers}</div>
-          <div class="sidebar-stat-label">Peers</div>
+          <div class="sidebar-stat-label">${peers === 1 ? t('sidebar_peer') : t('sidebar_peers')}
         </div>
       </div>
     `;
@@ -654,7 +660,7 @@ function renderPostMedia(post) {
   if (isSpoiler) {
     html += `<div class="post-spoiler-overlay" onclick="this.parentElement.classList.remove('post-media-spoiler');this.remove();">
       <i class="icon-eye-off" style="font-size:24px;"></i>
-      <span>Spoiler</span>
+      <span>${t('post_spoiler')}</span>
     </div>`;
   }
   images.forEach((src, i) => {
@@ -716,6 +722,125 @@ function renderStoryBar() {
   return html;
 }
 
+// ─── Mobile QR Promo Card ────────────────────────────────────
+// Shows a promo card in the feed suggesting users try DiaDem on mobile.
+// The QR code contains the site URL + access key for instant wallet import.
+// Dismissed for 20 hours via localStorage.
+
+const QR_PROMO_DISMISS_KEY = 'diadem_qr_promo_dismiss';
+const QR_PROMO_COOLDOWN_MS = 20 * 60 * 60 * 1000; // 20 hours
+
+function isDesktopDevice() {
+  const ua = navigator.userAgent || '';
+  return !/Android|iPhone|iPad|iPod|Mobile|Tablet/i.test(ua) && window.innerWidth >= 768;
+}
+
+function shouldShowQrPromo() {
+  if (!node?.wallet) return false;
+  if (!isDesktopDevice()) return false;
+  const dismissed = localStorage.getItem(QR_PROMO_DISMISS_KEY);
+  if (dismissed) {
+    const dismissedAt = parseInt(dismissed, 10);
+    if (Date.now() - dismissedAt < QR_PROMO_COOLDOWN_MS) return false;
+  }
+  return true;
+}
+
+function dismissQrPromo() {
+  localStorage.setItem(QR_PROMO_DISMISS_KEY, String(Date.now()));
+  _qrPromoCache = ''; // clear cache so it won't reappear on next render
+  const el = document.getElementById('qr-promo-card');
+  if (el) {
+    el.style.transition = 'opacity 0.3s, transform 0.3s';
+    el.style.opacity = '0';
+    el.style.transform = 'scale(0.95)';
+    setTimeout(() => el.remove(), 300);
+  }
+}
+
+// Cached QR promo HTML — generated once per session, reused on every feed render
+let _qrPromoCache = null;
+let _qrPromoCacheAddr = null; // invalidate if wallet changes
+
+function getQrPromoHtml() {
+  if (!shouldShowQrPromo()) return '';
+  // Return cached version if wallet hasn't changed
+  if (_qrPromoCache && _qrPromoCacheAddr === node.wallet?.address) return _qrPromoCache;
+  try {
+    _qrPromoCacheAddr = node.wallet?.address;
+
+    // Use seed phrase for QR — short enough to fit in QR code (~120 chars vs 700+ for access key)
+    const seed = node.getSeedPhrase();
+    if (!seed || seed.length === 0) { _qrPromoCache = ''; return ''; }
+    const seedStr = Array.isArray(seed) ? seed.join('-') : seed.replace(/\s+/g, '-');
+    const siteUrl = window.location.origin + window.location.pathname;
+    const qrUrl = siteUrl + '?import=' + seedStr;
+    const qrDataUrl = getQrImgUrl(qrUrl, 300);
+
+    _qrPromoCache = `
+      <div class="post qr-promo-card" id="qr-promo-card" style="border:1px solid var(--accent);background:var(--bg-card);position:relative;">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+          <i class="icon-smartphone" style="font-size:20px;color:var(--accent);"></i>
+          <span style="font-weight:600;font-size:15px;color:var(--text);">${t('qr_promo_title')}</span>
+        </div>
+        <div style="display:flex;gap:16px;align-items:flex-start;">
+          <div class="qr-promo-qr-wrap" style="flex-shrink:0;background:#fff;border-radius:8px;padding:6px;cursor:pointer;" onclick="window.diademUI.expandQr(this)" title="${t('qr_promo_expand')}">
+            <img src="${qrDataUrl}" alt="QR Code" style="display:block;width:140px;height:140px;image-rendering:pixelated;transition:width 0.3s,height 0.3s;">
+          </div>
+          <div style="flex:1;min-width:0;">
+            <p style="margin:0 0 8px;font-size:13px;color:var(--text-secondary);line-height:1.5;">${t('qr_promo_desc')}</p>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+              <i class="icon-camera" style="font-size:13px;color:var(--accent);"></i>
+              <span style="font-size:12px;color:var(--text-muted);">${t('qr_promo_scan_hint')}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+              <i class="icon-refresh-cw" style="font-size:13px;color:var(--accent);"></i>
+              <span style="font-size:12px;color:var(--text-muted);">${t('qr_promo_multi_session')}</span>
+            </div>
+            <div style="display:flex;align-items:center;gap:6px;">
+              <i class="icon-maximize-2" style="font-size:13px;color:var(--accent);"></i>
+              <span style="font-size:12px;color:var(--text-muted);cursor:pointer;text-decoration:underline;" onclick="window.diademUI.expandQr()">${t('qr_promo_expand')}</span>
+            </div>
+          </div>
+        </div>
+        <button onclick="window.diademUI.dismissQrPromo()" style="position:absolute;top:10px;right:10px;background:none;border:none;cursor:pointer;padding:4px 8px;border-radius:6px;font-size:12px;color:var(--text-muted);display:flex;align-items:center;gap:4px;" title="${t('qr_promo_dismiss')}">
+          <i class="icon-x" style="font-size:14px;"></i>
+        </button>
+      </div>`;
+    return _qrPromoCache;
+  } catch (e) {
+    _qrPromoCache = '';
+    return '';
+  }
+}
+
+/** Show QR code in a large overlay modal for easy scanning */
+function expandQr() {
+  const seed = node.getSeedPhrase();
+  if (!seed || seed.length === 0) return;
+  const seedStr = Array.isArray(seed) ? seed.join('-') : seed.replace(/\s+/g, '-');
+  const siteUrl = window.location.origin + window.location.pathname;
+  const qrUrl = siteUrl + '?import=' + seedStr;
+  const qrDataUrl = getQrImgUrl(qrUrl, 560);
+
+  const overlay = document.createElement('div');
+  overlay.className = 'confirm-overlay';
+  overlay.style.zIndex = '10001';
+  overlay.innerHTML = `
+    <div style="background:var(--bg-card);border-radius:16px;padding:24px;max-width:380px;width:90%;text-align:center;box-shadow:0 20px 60px rgba(0,0,0,0.4);">
+      <h3 style="margin:0 0 8px;color:var(--text);">${t('qr_promo_title')}</h3>
+      <p style="margin:0 0 16px;font-size:13px;color:var(--text-secondary);">${t('qr_promo_scan_hint')}</p>
+      <div style="background:#fff;border-radius:12px;padding:12px;display:inline-block;">
+        <img src="${qrDataUrl}" alt="QR Code" style="display:block;width:280px;height:280px;image-rendering:pixelated;">
+      </div>
+      <div style="margin-top:16px;">
+        <button class="btn btn-secondary" onclick="this.closest('.confirm-overlay').remove()" style="min-width:120px;">${t('confirm_close')}</button>
+      </div>
+    </div>`;
+  overlay.addEventListener('click', (e) => { if (e.target === overlay) overlay.remove(); });
+  document.body.appendChild(overlay);
+}
+
 function renderFeed() {
   const container = document.getElementById('feed-posts');
   if (!container) return;
@@ -742,7 +867,15 @@ function renderFeed() {
       </div>`;
     return;
   }
-  container.innerHTML = feed.map(post => renderPost(post)).join('');
+
+  // Render posts with QR promo card injected (max 1, after 3rd post)
+  const postsHtml = feed.map(post => renderPost(post));
+  const promoHtml = getQrPromoHtml();
+  if (promoHtml) {
+    const insertIdx = Math.min(3, postsHtml.length);
+    postsHtml.splice(insertIdx, 0, promoHtml);
+  }
+  container.innerHTML = postsHtml.join('');
 }
 
 function renderAvatar(profile, size = '') {
@@ -801,7 +934,7 @@ function renderPost(post, expanded = false) {
   const postFontStyle = postFontItem ? `font-family:${postFontItem.font};` : '';
 
   const repostLabel = post.repostedBy
-    ? `<div class="post-repost-label"><i class="icon-repeat-2" style="font-size:12px;"></i> ${escapeHtml(post.repostedByProfile?.name || post.repostedBy.slice(0, 10))} reposted</div>`
+    ? `<div class="post-repost-label"><i class="icon-repeat-2" style="font-size:12px;"></i> ${escapeHtml(post.repostedByProfile?.name || post.repostedBy.slice(0, 10))} ${t('sp_reposted_label')}</div>`
     : '';
 
   return `
@@ -830,7 +963,7 @@ function renderPost(post, expanded = false) {
         <button class="post-action" onclick="window.diademUI.viewPost('${postId}')"><i class="icon-message-circle"></i> ${(node.blockchain.state.replies.get(postId) || []).length}</button>
         <button class="post-action${(node.blockchain.state.reposts.get(postId) || new Set()).has(myAddr) ? ' reposted' : ''}" onclick="window.diademUI.repostPost('${postId}')"><i class="icon-repeat-2"></i> ${(node.blockchain.state.reposts.get(postId) || new Set()).size || ''}</button>
         <button class="post-action${isBookmarked ? ' liked' : ''}" onclick="window.diademUI.bookmarkPost('${postId}')"><i class="icon-bookmark"></i></button>
-        ${post.author === node.wallet?.address ? `<button class="post-action" onclick="window.diademUI.deletePost('${postId}')" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
+        ${post.author === node.wallet?.address ? `<button class="post-action" onclick="window.diademUI.deletePost('${postId}')" title="${t('action_delete')}"><i class="icon-trash-2"></i></button>` : ''}
       </div>
     </div>`;
 }
@@ -933,7 +1066,7 @@ function renderProfile(address = null) {
         </div>
         <div style="display:flex;align-items:center;gap:12px;margin-top:8px;">
           <span style="font-size:12px;color:${levelColor};font-weight:600;">⭐ ${rep.score.toFixed(1)} rep</span>
-          <span style="font-size:11px;color:var(--text-muted);">${rep.posts} posts · ${rep.likesReceived} likes received · ${rep.followersGained} followers gained</span>
+          <span style="font-size:11px;color:var(--text-muted);">${rep.posts} ${t('profile_rep_posts')} · ${rep.likesReceived} ${t('profile_rep_likes_received')} · ${rep.followersGained} ${t('profile_rep_followers_gained')}</span>
         </div>
         <div class="profile-bio" style="margin-top:12px;${bioStyle}">${escapeHtml(profile.bio || '')}</div>
         <div class="profile-stats" style="margin-top:12px;">
@@ -1068,7 +1201,7 @@ function renderSinglePost(postId) {
           </div>
         </div>
         ${isOwnPost ? `
-          <button class="post-action" onclick="window.diademUI.deletePost('${postId}')" title="Delete"><i class="icon-trash-2"></i></button>
+          <button class="post-action" onclick="window.diademUI.deletePost('${postId}')" title="${t('action_delete')}"><i class="icon-trash-2"></i></button>
         ` : `
           <button class="btn ${isFollowing ? 'btn-outline' : 'btn-primary'}" style="border-radius:20px;height:36px;padding:0 20px;font-size:13px;" onclick="window.diademUI.followUser('${post.author}')">${isFollowing ? t('profile_following') : t('profile_follow')}</button>
         `}
@@ -1118,7 +1251,7 @@ function renderSinglePost(postId) {
         </button>
         <button class="sp-action-btn${(node.blockchain.state.reposts.get(postId) || new Set()).has(myAddr) ? ' reposted' : ''}" onclick="window.diademUI.repostPost('${postId}')">
           <i class="icon-repeat-2"></i>
-          <span>${(node.blockchain.state.reposts.get(postId) || new Set()).size || ''} Repost</span>
+          <span>${(node.blockchain.state.reposts.get(postId) || new Set()).size || ''} ${t('sp_repost')}</span>
         </button>
         <button class="sp-action-btn${isBookmarked ? ' liked' : ''}" onclick="window.diademUI.bookmarkPost('${postId}')">
           <i class="icon-bookmark"></i>
@@ -1172,7 +1305,7 @@ function renderSinglePost(postId) {
                     <div class="sp-reply-actions">
                       <button class="post-action${r.liked || ''}" onclick="window.diademUI.likePost('${r.id}')"><i class="icon-heart"></i> ${r.likesCount}</button>
                       <button class="post-action" onclick="window.diademUI.showReactionPicker('${r.id}')"><i class="icon-smile"></i></button>
-                      ${r.author === myAddr ? `<button class="post-action" onclick="window.diademUI.deleteReply('${r.id}','${postId}')" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
+                      ${r.author === myAddr ? `<button class="post-action" onclick="window.diademUI.deleteReply('${r.id}','${postId}')" title="${t('action_delete')}"><i class="icon-trash-2"></i></button>` : ''}
                     </div>
                   </div>
                 </div>`;
@@ -1197,31 +1330,31 @@ function renderWallet() {
   const levelColor = levelColors[rep.level] || '#6B7280';
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;">
-      <h2>${t('wallet_title')}</h2>
+    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:24px;flex-wrap:wrap;gap:12px;">
+      <h2 style="font-size:clamp(16px,4vw,20px);">${t('wallet_title')}</h2>
       <div class="flex gap-8">
         <button class="btn btn-sm" style="background:var(--green);color:#FFF;border:none;" onclick="window.diademUI.showTransferModal()">${t('wallet_send')}</button>
         <button class="btn btn-outline btn-sm" onclick="navigator.clipboard.writeText('${node.wallet.address}').then(()=>window.diademUI._toast('${t('copied')}','success',2000))">${t('wallet_copy')}</button>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;">
+    <div class="wallet-top-cards" style="display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:32px;">
       <div class="card" style="padding:20px;">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${t('wallet_total')}</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text-primary);">${balance.toLocaleString()} DDM</div>
+        <div style="font-size:clamp(18px,5vw,28px);font-weight:700;color:var(--text-primary);">${balance.toLocaleString()} DDM</div>
       </div>
       <div class="card" style="padding:20px;">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${t('wallet_staked')}</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text-primary);">${stake.amount.toLocaleString()} DDM</div>
+        <div style="font-size:clamp(18px,5vw,28px);font-weight:700;color:var(--text-primary);">${stake.amount.toLocaleString()} DDM</div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">APY 14.2%</div>
       </div>
       <div class="card" style="padding:20px;cursor:pointer;position:relative;" onclick="document.getElementById('rep-panel').classList.toggle('hidden')">
-        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">Reputation <i class="icon-chevron-down" style="font-size:12px;"></i></div>
-        <div style="font-size:28px;font-weight:700;color:${levelColor};">${rep.score.toFixed(1)}</div>
+        <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${t('wallet_reputation')} <i class="icon-chevron-down" style="font-size:12px;"></i></div>
+        <div style="font-size:clamp(18px,5vw,28px);font-weight:700;color:${levelColor};">${rep.score.toFixed(1)}</div>
         <div style="font-size:13px;color:${levelColor};margin-top:4px;">${rep.level}</div>
       </div>
       <div class="card" style="padding:20px;">
         <div style="font-size:12px;color:var(--text-muted);margin-bottom:8px;">${t('wallet_network')}</div>
-        <div style="font-size:28px;font-weight:700;color:var(--text-primary);">Block #${info.chain.height}</div>
+        <div style="font-size:clamp(18px,5vw,28px);font-weight:700;color:var(--text-primary);">Block #${info.chain.height}</div>
         <div style="font-size:13px;color:var(--text-muted);margin-top:4px;">${info.network.peers} ${t('wallet_peers')}</div>
       </div>
     </div>
@@ -1237,12 +1370,12 @@ function renderWallet() {
           <div style="width:56px;height:56px;border-radius:50%;background:${levelColor};display:flex;align-items:center;justify-content:center;font-size:22px;font-weight:900;color:#FFF;flex-shrink:0;">${rp.curIdx + 1}</div>
           <div style="flex:1;">
             <div style="font-size:20px;font-weight:800;color:${levelColor};line-height:1.2;">${rep.level}</div>
-            <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${rep.score.toLocaleString()} reputation</div>
+            <div style="font-size:13px;color:var(--text-muted);margin-top:2px;">${rep.score.toLocaleString()} ${t('wallet_rep_suffix')}</div>
           </div>
           ${rp.next ? `<div style="text-align:right;">
-            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">Next</div>
+            <div style="font-size:11px;color:var(--text-muted);text-transform:uppercase;letter-spacing:0.5px;">${t('wallet_rep_next')}</div>
             <div style="font-size:15px;font-weight:700;color:${nextColor};">${rp.next.level}</div>
-          </div>` : `<div style="font-size:13px;font-weight:700;color:${levelColor};">MAX</div>`}
+          </div>` : `<div style="font-size:13px;font-weight:700;color:${levelColor};">${t('wallet_rep_max')}</div>`}
         </div>
         <!-- Progress bar -->
         <div style="height:8px;background:rgba(0,0,0,0.15);border-radius:4px;overflow:hidden;">
@@ -1250,44 +1383,44 @@ function renderWallet() {
         </div>
         <div style="display:flex;justify-content:space-between;margin-top:6px;font-size:12px;">
           <span style="color:${levelColor};font-weight:600;">${pct}%</span>
-          <span style="color:var(--text-muted);">${rp.next ? rp.remaining.toLocaleString() + ' to go' : 'Complete!'}</span>
+          <span style="color:var(--text-muted);">${rp.next ? rp.remaining.toLocaleString() + ' ' + t('wallet_rep_to_go') : t('wallet_rep_complete')}</span>
         </div>
       </div>
 
       <!-- Stats row -->
-      <div style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--divider);">
+      <div class="wallet-rep-stats-row" style="display:grid;grid-template-columns:repeat(4,1fr);border-bottom:1px solid var(--divider);">
         ${[
-          { label: 'Posts', val: rep.posts, icon: 'edit-3', rep: '+1' },
-          { label: 'Likes In', val: rep.likesReceived, icon: 'heart', rep: '+2' },
-          { label: 'Likes Out', val: rep.likesGiven, icon: 'thumbs-up', rep: '+0.5' },
-          { label: 'Followers', val: rep.followersGained, icon: 'users', rep: '+3' },
+          { label: t('wallet_stat_posts'), val: rep.posts, icon: 'edit-3', rep: '+1' },
+          { label: t('wallet_stat_likes_in'), val: rep.likesReceived, icon: 'heart', rep: '+2' },
+          { label: t('wallet_stat_likes_out'), val: rep.likesGiven, icon: 'thumbs-up', rep: '+0.5' },
+          { label: t('wallet_stat_followers'), val: rep.followersGained, icon: 'users', rep: '+3' },
         ].map(s => `
           <div style="padding:16px 12px;text-align:center;border-right:1px solid var(--divider);">
             <i class="icon-${s.icon}" style="font-size:16px;color:var(--text-muted);margin-bottom:6px;display:block;"></i>
             <div style="font-size:18px;font-weight:700;color:var(--text-primary);">${s.val.toLocaleString()}</div>
             <div style="font-size:11px;color:var(--text-muted);">${s.label}</div>
-            <div style="font-size:10px;color:var(--green);margin-top:2px;">${s.rep} rep</div>
+            <div style="font-size:10px;color:var(--green);margin-top:2px;">${s.rep} ${t('wallet_rep_suffix')}</div>
           </div>
         `).join('')}
       </div>
 
       <!-- Level roadmap -->
       <div style="padding:20px 24px;">
-        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Level Roadmap</div>
+        <div style="font-size:13px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">${t('wallet_level_roadmap')}</div>
         <div style="display:flex;flex-direction:column;gap:4px;">
-          ${LEVEL_THRESHOLDS.map((t, i) => {
-            const c = LEVEL_COLORS[t.level] || '#6B7280';
-            const passed = rep.score >= t.min;
-            const isCurrent = t.level === rep.level;
+          ${LEVEL_THRESHOLDS.map((lv, i) => {
+            const c = LEVEL_COLORS[lv.level] || '#6B7280';
+            const passed = rep.score >= lv.min;
+            const isCurrent = lv.level === rep.level;
             const nextT = LEVEL_THRESHOLDS[i + 1];
-            const segPct = passed && nextT ? Math.min(100, ((rep.score - t.min) / (nextT.min - t.min)) * 100) : (passed ? 100 : 0);
+            const segPct = passed && nextT ? Math.min(100, ((rep.score - lv.min) / (nextT.min - lv.min)) * 100) : (passed ? 100 : 0);
             return `
             <div style="display:flex;align-items:center;gap:10px;padding:6px 10px;border-radius:8px;${isCurrent ? 'background:' + c + '15;' : ''}">
               <div style="width:8px;height:8px;border-radius:50%;flex-shrink:0;background:${passed ? c : 'var(--divider)'};${isCurrent ? 'box-shadow:0 0 6px ' + c + ';' : ''}"></div>
               <div style="flex:1;min-width:0;">
                 <div style="display:flex;justify-content:space-between;align-items:center;">
-                  <span style="font-size:12px;font-weight:${isCurrent ? '700' : '500'};color:${passed ? c : 'var(--text-muted)'};">${t.level}</span>
-                  <span style="font-size:11px;color:var(--text-muted);">${t.min.toLocaleString()}</span>
+                  <span style="font-size:12px;font-weight:${isCurrent ? '700' : '500'};color:${passed ? c : 'var(--text-muted)'};">${lv.level}</span>
+                  <span style="font-size:11px;color:var(--text-muted);">${lv.min.toLocaleString()}</span>
                 </div>
                 ${isCurrent && rp.next ? `<div style="height:3px;background:var(--divider);border-radius:2px;margin-top:4px;overflow:hidden;">
                   <div style="height:100%;width:${pct}%;background:${c};border-radius:2px;"></div>
@@ -1300,7 +1433,7 @@ function renderWallet() {
       </div>
     </div>`;
     })()}
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+    <div class="wallet-info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
       <div class="card" style="padding:24px;">
         <h4 style="margin-bottom:16px;">${t('wallet_cas')}</h4>
         <div style="color:var(--text-secondary);font-size:14px;">
@@ -1321,25 +1454,25 @@ function renderWallet() {
         </div>
       </div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px;">
+    <div class="wallet-info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;margin-top:24px;">
       <div class="card" style="padding:24px;">
-        <h4 style="margin-bottom:16px;">Fees & Rewards</h4>
+        <h4 style="margin-bottom:16px;">${t('wallet_fees_rewards')}</h4>
         <div style="color:var(--text-secondary);font-size:14px;">
-          <div class="flex justify-between mb-8"><span>Create Post:</span><span style="color:var(--red);">-1 DDM</span></div>
-          <div class="flex justify-between mb-8"><span>Update Profile:</span><span style="color:var(--red);">-0.5 DDM</span></div>
-          <div class="flex justify-between mb-8"><span>Receive Like:</span><span style="color:var(--green);">+0.1 DDM</span></div>
-          <div class="flex justify-between mb-8"><span>Block Reward:</span><span style="color:var(--green);">+10 DDM</span></div>
-          <div class="flex justify-between"><span>Staking APY:</span><span style="color:var(--green);">14.2%</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_fee_create_post')}</span><span style="color:var(--red);">-1 DDM</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_fee_update_profile')}</span><span style="color:var(--red);">-0.5 DDM</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_fee_receive_like')}</span><span style="color:var(--green);">+0.1 DDM</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_fee_block_reward')}</span><span style="color:var(--green);">+10 DDM</span></div>
+          <div class="flex justify-between"><span>${t('wallet_fee_staking_apy')}</span><span style="color:var(--green);">14.2%</span></div>
         </div>
       </div>
       <div class="card" style="padding:24px;">
-        <h4 style="margin-bottom:16px;">Reputation Stats</h4>
+        <h4 style="margin-bottom:16px;">${t('wallet_rep_stats')}</h4>
         <div style="color:var(--text-secondary);font-size:14px;">
-          <div class="flex justify-between mb-8"><span>Posts Created:</span><span style="color:var(--text-primary);">${rep.posts} (+1 rep)</span></div>
-          <div class="flex justify-between mb-8"><span>Likes Received:</span><span style="color:var(--text-primary);">${rep.likesReceived} (+2 rep)</span></div>
-          <div class="flex justify-between mb-8"><span>Likes Given:</span><span style="color:var(--text-primary);">${rep.likesGiven} (+0.5 rep)</span></div>
-          <div class="flex justify-between mb-8"><span>Followers Gained:</span><span style="color:var(--text-primary);">${rep.followersGained} (+3 rep)</span></div>
-          <div class="flex justify-between"><span>Total Score:</span><span style="color:${levelColor};font-weight:700;">${rep.score.toFixed(1)} — ${rep.level}</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_rep_posts_created')}</span><span style="color:var(--text-primary);">${rep.posts} (+1 ${t('wallet_rep_suffix')})</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_rep_likes_received')}</span><span style="color:var(--text-primary);">${rep.likesReceived} (+2 ${t('wallet_rep_suffix')})</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_rep_likes_given')}</span><span style="color:var(--text-primary);">${rep.likesGiven} (+0.5 ${t('wallet_rep_suffix')})</span></div>
+          <div class="flex justify-between mb-8"><span>${t('wallet_rep_followers_gained')}</span><span style="color:var(--text-primary);">${rep.followersGained} (+3 ${t('wallet_rep_suffix')})</span></div>
+          <div class="flex justify-between"><span>${t('wallet_rep_total_score')}</span><span style="color:${levelColor};font-weight:700;">${rep.score.toFixed(1)} — ${rep.level}</span></div>
         </div>
       </div>
     </div>
@@ -1361,7 +1494,7 @@ function renderStaking() {
       <div class="stat-card"><div class="label">${t('staking_apy')}</div><div class="value">14.2%</div><div class="sub">${t('staking_compound')}</div></div>
       <div class="stat-card"><div class="label">${t('staking_available')}</div><div class="value">${balance.toLocaleString()} DDM</div></div>
     </div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
+    <div class="wallet-info-grid" style="display:grid;grid-template-columns:1fr 1fr;gap:24px;">
       <div class="card">
         <h4 class="mb-16">${t('staking_title')}</h4>
         <div class="form-group">
@@ -1419,7 +1552,7 @@ function renderNotifications() {
   // Filter out string hashes (legacy data) — only show proper tx objects
   const validTxs = txs.filter(tx => typeof tx !== 'string' && tx.type);
   if (validTxs.length === 0) {
-    el.innerHTML = `<div class="text-muted" style="text-align:center;padding:40px;">No detailed notifications yet.<br><span style="font-size:12px;">New actions will appear here with full details.</span></div>`;
+    el.innerHTML = `<div class="text-muted" style="text-align:center;padding:40px;">${t('notif_empty_detail')}<br><span style="font-size:12px;">${t('notif_empty_detail_sub')}</span></div>`;
     return;
   }
   // Helper: get display name for an address
@@ -1508,7 +1641,7 @@ function renderNotifications() {
       }
       else if (type === 'profile_decor' || type === 'equip_decor') { icon = 'icon-shopping-bag'; text = t('notif_decor'); }
       else if (type === 'vote') { icon = 'icon-check-circle'; text = t('notif_voted'); }
-      else if (!text) { text = type !== 'unknown' ? type.replace(/_/g, ' ') : 'Transaction'; }
+      else if (!text) { text = type !== 'unknown' ? type.replace(/_/g, ' ') : t('notif_transaction'); }
 
       const clickable = clickAddr ? ` style="cursor:pointer;" onclick="window.diademUI.viewUser('${clickAddr}')"` : '';
       return `<div class="notif-item"${clickable}><div class="notif-icon"><i class="${icon}"></i></div><div class="notif-text">${text}${txObj.timestamp ? `<div class="notif-time">${formatTimeAgo(txObj.timestamp)}</div>` : ''}</div></div>`;
@@ -1527,7 +1660,7 @@ function renderTransactions(filter = 'all') {
     { id: 'all', label: t('tx_all') },
     { id: 'transfer', label: t('tx_sent') },
     { id: 'received', label: t('tx_received') },
-    { id: 'social', label: 'Social' },
+    { id: 'social', label: t('tx_social') },
     { id: 'stake', label: t('tx_staking') },
     { id: 'vote', label: t('tx_governance') },
   ];
@@ -1542,9 +1675,9 @@ function renderTransactions(filter = 'all') {
   });
 
   el.innerHTML = `
-    <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;">
-      <h2 style="font-size:20px;">${t('tx_title')}</h2>
-      <div class="search-box" style="width:260px;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;flex-wrap:wrap;gap:12px;">
+      <h2 style="font-size:clamp(16px,4vw,20px);">${t('tx_title')}</h2>
+      <div class="search-box" style="width:min(260px, 50vw);">
         <i class="icon-search"></i>
         <input type="text" class="input-field" placeholder="${t('tx_search')}" style="padding-left:36px;border-radius:19px;height:38px;">
       </div>
@@ -1589,13 +1722,13 @@ function renderTransactionRow(tx) {
       if (tx.data?.postHash) {
         const likedPost = node.blockchain.state.posts.get(tx.data.postHash);
         if (likedPost && likedPost.author === node.wallet?.address && tx.from !== node.wallet?.address) {
-          title = 'Received like'; bgColor = '#F0FDF4'; iconColor = '#22C55E';
+          title = t('tx_received_like'); bgColor = '#F0FDF4'; iconColor = '#22C55E';
           amountStr = '+0.1 DDM'; amountColor = '#22C55E';
         }
       }
       break;
     case 'follow': title = t('tx_followed'); bgColor = '#EFF6FF'; iconColor = '#3B82F6'; break;
-    case 'unfollow': title = 'Unfollowed'; bgColor = '#F5F5F5'; iconColor = '#6B7280'; break;
+    case 'unfollow': title = t('tx_unfollowed'); bgColor = '#F5F5F5'; iconColor = '#6B7280'; break;
     case 'profile_update': title = t('tx_profile_update'); amountStr = '-0.5 DDM'; amountColor = '#EF4444'; break;
   }
 
@@ -1791,7 +1924,7 @@ function _renderSavedChat(savedMsgs) {
               <div style="font-size:14px;line-height:1.5;word-break:break-word;">${escapeHtml(msg.content)}</div>
               <div style="display:flex;justify-content:flex-end;align-items:center;gap:8px;margin-top:4px;">
                 <span style="font-size:11px;opacity:0.7;">${formatTimeAgo(msg.timestamp)}</span>
-                <button onclick="window.diademUI.deleteSavedMessage('${msg.id}')" style="background:none;border:none;padding:0;cursor:pointer;opacity:0.6;color:#FFF;font-size:12px;" title="Delete"><i class="icon-trash-2" style="font-size:12px;"></i></button>
+                <button onclick="window.diademUI.deleteSavedMessage('${msg.id}')" style="background:none;border:none;padding:0;cursor:pointer;opacity:0.6;color:#FFF;font-size:12px;" title="${t('action_delete')}"><i class="icon-trash-2" style="font-size:12px;"></i></button>
               </div>
             </div>
           </div>
@@ -1956,7 +2089,7 @@ function renderSearch(query = '') {
   el.innerHTML = `
     <div style="display:flex;justify-content:space-between;align-items:center;padding-bottom:20px;">
       <h2 style="font-size:20px;">${t('search_title')}</h2>
-      <div class="search-box" style="width:320px;">
+      <div class="search-box" style="width:min(320px, 60vw);">
         <i class="icon-search"></i>
         <input type="text" class="input-field" id="search-input" value="${escapeHtml(query)}" placeholder="${t('tx_search')}" style="padding-left:36px;border-radius:19px;height:38px;" onkeydown="if(event.key==='Enter')window.diademUI.doSearch(this.value)">
       </div>
@@ -2244,8 +2377,8 @@ function renderSettingsData() {
   setText('settings-address', node.wallet.address);
   setText('settings-balance', node.getBalance().toLocaleString() + ' DDM');
   setText('settings-staked', node.getStake().amount.toLocaleString() + ' DDM');
-  setText('settings-ipfs-status', info.ipfs?.localNode ? 'Local node active' : 'Gateways only');
-  setText('settings-signaling-status', info.network.signaling === 'connected' ? t('settings_active') : 'Disconnected');
+  setText('settings-ipfs-status', info.ipfs?.localNode ? t('settings_ipfs_local') : t('settings_ipfs_gateways'));
+  setText('settings-signaling-status', info.network.signaling === 'connected' ? t('settings_active') : t('settings_disconnected'));
 
   // Language selector
   const langContainer = document.getElementById('lang-selector');
@@ -2261,6 +2394,8 @@ function renderSettingsData() {
 
 window.diademUI = {
   navigate,
+  dismissQrPromo,
+  expandQr,
 
   _shopFilter(category, btn) {
     document.querySelectorAll('.shop-filter-tab').forEach(t => t.classList.remove('active'));
@@ -2279,10 +2414,10 @@ window.diademUI = {
       const likes = node.blockchain.state.likes.get(postId) || new Set();
       if (likes.has(node.wallet?.address)) {
         await node.unlikePost(postId);
-        showToast('Like removed', 'info', 1500);
+        showToast(t('like_removed'), 'info', 1500);
       } else {
         await node.likePost(postId);
-        showToast('Liked!', 'success', 1500);
+        showToast(t('liked_toast'), 'success', 1500);
       }
     } catch (e) {
       showToast(e.message, 'error');
@@ -2299,10 +2434,10 @@ window.diademUI = {
   },
 
   async deletePost(postId) {
-    showConfirm('Delete Post', 'Are you sure you want to delete this post? This cannot be undone.', async () => {
+    showConfirm(t('delete_post_title'), t('delete_post_confirm'), async () => {
       try {
         await node.deletePost(postId);
-        showToast('Post deleted', 'success');
+        showToast(t('post_deleted'), 'success');
       } catch (e) { showToast(e.message, 'error'); }
     });
   },
@@ -2311,7 +2446,7 @@ window.diademUI = {
     const textarea = document.getElementById('compose-text');
     if (!textarea || !textarea.value.trim()) return;
     const balance = node.getBalance();
-    if (balance < 1) { showToast('Not enough DDM! Need at least 1 DDM to post.', 'error'); return; }
+    if (balance < 1) { showToast(t('error_not_enough_ddm_post'), 'error'); return; }
     try {
       const media = _composeImageList.length > 0 ? _composeImageList[0] : (_composeImageData || null);
       const options = {};
@@ -2325,27 +2460,27 @@ window.diademUI = {
       const preview = document.getElementById('compose-image-preview');
       if (preview) preview.style.display = 'none';
       document.getElementById('compose-modal').classList.remove('active');
-      showToast('Post created! (-1 DDM)', 'success');
+      showToast(t('post_created'), 'success');
       renderFeed();
     } catch (e) { showToast(e.message, 'error'); }
   },
 
   async doStake() {
     const amount = parseInt(document.getElementById('stake-amount')?.value || '0');
-    if (amount < 100) { showToast('Minimum stake: 100 DDM', 'warning'); return; }
+    if (amount < 100) { showToast(t('staking_min_error'), 'warning'); return; }
     try {
       await node.stake(amount);
-      showToast(`Staked ${amount} DDM`, 'success');
+      showToast(`${t('staking_success')} ${amount} DDM`, 'success');
       renderStaking();
     } catch (e) { showToast(e.message, 'error'); }
   },
 
   async doUnstake() {
     const amount = node.getStake().amount;
-    showConfirm('Unstake DDM', `Unstake ${amount.toLocaleString()} DDM?`, async () => {
+    showConfirm(t('unstake_title'), `${t('unstake_confirm')} ${amount.toLocaleString()} DDM?`, async () => {
       try {
         await node.unstake(amount);
-        showToast(`Unstaked ${amount} DDM`, 'success');
+        showToast(`${t('unstake_success')} ${amount} DDM`, 'success');
         renderStaking();
       } catch (e) { showToast(e.message, 'error'); }
     });
@@ -2354,11 +2489,11 @@ window.diademUI = {
   async doTransfer() {
     const to = document.getElementById('transfer-to')?.value;
     const amount = parseInt(document.getElementById('transfer-amount')?.value || '0');
-    if (!to || amount <= 0) { showToast('Invalid address or amount', 'warning'); return; }
+    if (!to || amount <= 0) { showToast(t('transfer_invalid'), 'warning'); return; }
     try {
       await node.transfer(to, amount);
       document.getElementById('transfer-modal')?.classList.remove('active');
-      showToast(`Sent ${amount} DDM`, 'success');
+      showToast(`${t('transfer_success')} ${amount} DDM`, 'success');
       renderWallet();
     } catch (e) { showToast(e.message, 'error'); }
   },
@@ -2382,7 +2517,7 @@ window.diademUI = {
     }
     try {
       await node.updateProfile(profileData);
-      showToast('Profile updated! (-0.5 DDM)', 'success');
+      showToast(t('profile_updated'), 'success');
       navigate('profile');
     } catch (e) { showToast(e.message, 'error'); }
   },
@@ -2392,20 +2527,20 @@ window.diademUI = {
     if (!input?.value) {
       const { offerString, peerId, _pc } = await node.createOffer();
       window._pendingPC = _pc; window._pendingPeerId = peerId;
-      showCopyDialog('Share this offer code', offerString);
+      showCopyDialog(t('peers_share_offer'), offerString);
     } else {
       const { answerString } = await node.acceptOffer(input.value);
-      showCopyDialog('Send this answer back', answerString);
+      showCopyDialog(t('peers_send_answer'), answerString);
       input.value = '';
     }
   },
 
   async completeAnswer() {
-    showPrompt('Complete Connection', 'Paste the answer code from the other peer:', 'Paste answer...', async (answer) => {
+    showPrompt(t('peers_complete_title'), t('peers_paste_answer'), t('peers_paste_answer_placeholder'), async (answer) => {
       if (answer && window._pendingPC) {
         await node.completeConnection(window._pendingPeerId, answer, window._pendingPC);
         window._pendingPC = null;
-        showToast('Peer connected!', 'success');
+        showToast(t('peers_connected'), 'success');
       }
     });
   },
@@ -2425,10 +2560,10 @@ window.diademUI = {
       const following = node.blockchain.state.following.get(node.wallet?.address) || new Set();
       if (following.has(address)) {
         await node.unfollowUser(address);
-        showToast(t('unfollowed') || 'Unfollowed', 'info', 2000);
+        showToast(t('unfollowed'), 'info', 2000);
       } else {
         await node.followUser(address);
-        showToast(t('followed') || 'Followed!', 'success', 2000);
+        showToast(t('followed'), 'success', 2000);
       }
     } catch (e) { showToast(e.message, 'error'); }
   },
@@ -2456,10 +2591,10 @@ window.diademUI = {
   },
 
   async deleteReply(replyId, parentId) {
-    showConfirm('Delete Reply', 'Are you sure you want to delete this reply?', async () => {
+    showConfirm(t('delete_reply_title'), t('delete_reply_confirm'), async () => {
       try {
         await node.deleteReply(replyId, parentId);
-        showToast('Reply deleted', 'success');
+        showToast(t('reply_deleted'), 'success');
         if (_currentPostId) renderSinglePost(_currentPostId);
         else if (_currentProfileAddr || location.hash.startsWith('#profile')) {
           const addr = _currentProfileAddr || node.wallet?.address;
@@ -2532,7 +2667,7 @@ window.diademUI = {
             <button onclick="window.diademUI._clearDMImage()" style="position:absolute;top:-6px;right:-6px;width:22px;height:22px;border-radius:50%;background:var(--danger);color:#FFF;border:none;font-size:14px;cursor:pointer;display:flex;align-items:center;justify-content:center;">×</button>
           </div>`;
       }
-    } catch (e) { showToast('Failed to load image', 'error'); }
+    } catch (e) { showToast(t('error_image_load'), 'error'); }
   },
 
   dmPaymentDialog(toAddr) {
@@ -2695,7 +2830,7 @@ window.diademUI = {
     showConfirm(t('shop_buy') + ' ' + (item?.name || itemId), `${t('shop_confirm_buy')} ${price} DDM?`, async () => {
       try {
         await node.buyProfileDecor(itemId, slot, price);
-        showToast(`Purchased ${item?.name || itemId}!`, 'success');
+        showToast(`${t('shop_purchased')} ${item?.name || itemId}`, 'success');
         renderShop();
       } catch (e) { showToast(e.message, 'error'); }
     });
@@ -2723,7 +2858,7 @@ window.diademUI = {
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:400px;max-height:70vh;overflow-y:auto;">
         <div class="confirm-title">${t('sp_liked_by')} (${list.length})</div>
-        ${list.length === 0 ? '<div class="text-muted text-sm" style="padding:16px 0;">No likes yet</div>' :
+        ${list.length === 0 ? '<div class="text-muted text-sm" style="padding:16px 0;">' + t('no_likes_yet') + '</div>' :
           list.map(addr => {
             const p = node.getProfile(addr) || {};
             const n = p.name || addr.slice(0, 10) + '...';
@@ -2737,7 +2872,7 @@ window.diademUI = {
             </div>`;
           }).join('')}
         <div class="confirm-actions" style="margin-top:12px;">
-          <button class="btn btn-outline" onclick="this.closest('.confirm-overlay').remove()">Close</button>
+          <button class="btn btn-outline" onclick="this.closest('.confirm-overlay').remove()">${t('confirm_close')}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -2757,19 +2892,19 @@ window.diademUI = {
   async previewAvatar(input) {
     if (!input.files?.[0]) return;
     try {
-      const result = await showImageEditor(input.files[0], { cropW: 256, cropH: 256, shape: 'circle', title: 'Edit Avatar' });
+      const result = await showImageEditor(input.files[0], { cropW: 256, cropH: 256, shape: 'circle', title: t('edit_avatar') });
       if (!result) { input.value = ''; return; }
       _pendingAvatarData = result;
       const preview = document.getElementById('edit-avatar-preview');
       if (preview) preview.innerHTML = `<img src="${_pendingAvatarData}" alt="">`;
-    } catch (e) { showToast('Failed to load image', 'error'); }
+    } catch (e) { showToast(t('error_image_load'), 'error'); }
     input.value = '';
   },
 
   async previewBanner(input) {
     if (!input.files?.[0]) return;
     try {
-      const result = await showImageEditor(input.files[0], { cropW: 1200, cropH: 400, shape: 'rect', title: 'Edit Banner' });
+      const result = await showImageEditor(input.files[0], { cropW: 1200, cropH: 400, shape: 'rect', title: t('edit_banner') });
       if (!result) { input.value = ''; return; }
       _pendingBannerData = result;
       const preview = document.getElementById('edit-banner-preview');
@@ -2780,7 +2915,7 @@ window.diademUI = {
         const hint = document.getElementById('edit-banner-hint');
         if (hint) hint.style.display = 'none';
       }
-    } catch (e) { showToast('Failed to load image', 'error'); }
+    } catch (e) { showToast(t('error_image_load'), 'error'); }
     input.value = '';
   },
 
@@ -2794,7 +2929,7 @@ window.diademUI = {
       }
       _composeImageData = _composeImageList[0] || null;
       this._updateComposePreview();
-    } catch (e) { showToast('Failed to load image', 'error'); }
+    } catch (e) { showToast(t('error_image_load'), 'error'); }
   },
 
   _updateComposePreview() {
@@ -2811,7 +2946,7 @@ window.diademUI = {
           </div>`).join('')}
       </div>
       <label style="display:flex;align-items:center;gap:6px;margin-top:8px;cursor:pointer;font-size:12px;color:var(--text-muted);">
-        <input type="checkbox" ${_composeSpoiler ? 'checked' : ''} onchange="window.diademUI._toggleSpoiler(this.checked)"> Spoiler
+        <input type="checkbox" ${_composeSpoiler ? 'checked' : ''} onchange="window.diademUI._toggleSpoiler(this.checked)"> ${t('post_spoiler')}
       </label>
       ${_composeImageList.length < 4 ? `<button class="post-action" style="margin-top:4px;font-size:11px;" onclick="document.getElementById('compose-image-input').click()"><i class="icon-image" style="font-size:13px;"></i> +</button>` : ''}
     `;
@@ -2864,7 +2999,7 @@ window.diademUI = {
     overlay.innerHTML = `
       <div class="confirm-box" style="max-width:400px;max-height:70vh;overflow-y:auto;">
         <div class="confirm-title">${title} (${list.length})</div>
-        ${list.length === 0 ? '<div class="text-muted text-sm" style="padding:16px 0;">Empty</div>' :
+        ${list.length === 0 ? '<div class="text-muted text-sm" style="padding:16px 0;">' + t('list_empty') + '</div>' :
           list.map(addr => {
             const p = node.getProfile(addr) || {};
             const n = p.name || addr.slice(0, 10) + '...';
@@ -2878,7 +3013,7 @@ window.diademUI = {
             </div>`;
           }).join('')}
         <div class="confirm-actions" style="margin-top:12px;">
-          <button class="btn btn-outline" onclick="this.closest('.confirm-overlay').remove()">Close</button>
+          <button class="btn btn-outline" onclick="this.closest('.confirm-overlay').remove()">${t('confirm_close')}</button>
         </div>
       </div>`;
     document.body.appendChild(overlay);
@@ -2954,7 +3089,7 @@ window.diademUI = {
               <div class="post-content">${escapeHtml(r.content)}</div>
               <div class="post-actions">
                 <button class="post-action${r.liked}" onclick="event.stopPropagation();window.diademUI.likePost('${r.id}')"><i class="icon-heart"></i> ${r.likesCount}</button>
-                ${r.author === myAddr ? `<button class="post-action" onclick="event.stopPropagation();window.diademUI.deleteReply('${r.id}','${r.parentPostId}')" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
+                ${r.author === myAddr ? `<button class="post-action" onclick="event.stopPropagation();window.diademUI.deleteReply('${r.id}','${r.parentPostId}')" title="${t('action_delete')}"><i class="icon-trash-2"></i></button>` : ''}
               </div>
             </div>`;
         }).join('');
@@ -3203,7 +3338,7 @@ window.diademUI = {
                   <div style="font-size:11px;font-weight:600;color:${LEVEL_COLORS[f.level] || '#888'};background:${LEVEL_COLORS[f.level] || '#888'}18;padding:3px 8px;border-radius:6px;">${f.level}</div>
                 </div>`;
               }).join('')}
-            ${followersList.length > 20 ? `<div style="text-align:center;color:var(--text-muted);font-size:12px;padding-top:12px;">+${followersList.length - 20} more</div>` : ''}
+            ${followersList.length > 20 ? `<div style="text-align:center;color:var(--text-muted);font-size:12px;padding-top:12px;">+${followersList.length - 20} ${t('show_more_count')}</div>` : ''}
           </div>
         </div>
       `;
@@ -3215,7 +3350,7 @@ window.diademUI = {
       if (allStories.length === 0) {
         contentEl.innerHTML = `<div class="text-muted" style="text-align:center;padding:40px;">
           ${isOwn ? `<i class="icon-camera" style="font-size:32px;display:block;margin-bottom:12px;opacity:0.4;"></i>
-          <p>No stories yet</p>
+          <p>${t('stories_empty')}</p>
           <button class="btn btn-primary" style="margin-top:12px;border-radius:18px;" onclick="window.diademUI.createStory()">${t('stories_add')}</button>` : 'No stories yet'}
         </div>`;
       } else {
@@ -3233,7 +3368,7 @@ window.diademUI = {
             ${isOwn ? `<div style="margin-bottom:16px;"><button class="btn btn-primary" style="border-radius:18px;" onclick="window.diademUI.createStory()"><i class="icon-plus" style="margin-right:6px;"></i>${t('stories_add')}</button></div>` : ''}
 
             ${active.length > 0 ? `
-              <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">Active Stories (${active.length})</h3>
+              <h3 style="font-size:14px;font-weight:600;color:var(--text-primary);margin-bottom:12px;">${t('stories_active')} (${active.length})</h3>
               <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;margin-bottom:24px;">
                 ${active.map(s => `
                   <div class="story-grid-item" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;cursor:pointer;background:#111;" onclick="window.diademUI.viewStory('${address}')">
@@ -3241,7 +3376,7 @@ window.diademUI = {
                     ${s.text ? `<div style="position:absolute;bottom:8px;left:8px;right:8px;font-size:11px;color:#FFF;text-shadow:0 1px 4px rgba(0,0,0,0.7);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;">${escapeHtml(s.text)}</div>` : ''}
                     <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${formatTimeAgo(s.timestamp)}</div>
                     ${isOwn && !s.hidden ? `<button style="position:absolute;top:6px;left:6px;width:22px;height:22px;border-radius:50%;background:rgba(0,0,0,0.5);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.hideStory('${address}','${s.id}')" title="Hide"><i class="icon-eye-off" style="font-size:11px;"></i></button>` : ''}
-                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="Delete"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
+                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="${t('action_delete')}"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -3250,14 +3385,14 @@ window.diademUI = {
             ${archived.length > 0 ? `
               <h3 style="font-size:14px;font-weight:600;color:var(--text-muted);margin-bottom:12px;cursor:pointer;" onclick="this.nextElementSibling.style.display=this.nextElementSibling.style.display==='none'?'grid':'none';this.querySelector('i').style.transform=this.nextElementSibling.style.display==='none'?'':'rotate(90deg)'">
                 <i class="icon-chevron-right" style="font-size:14px;margin-right:4px;transition:transform 0.2s;"></i>
-                Archive (${archived.length})
+                ${t('stories_archive')} (${archived.length})
               </h3>
               <div style="display:none;grid-template-columns:repeat(auto-fill,minmax(120px,1fr));gap:10px;">
                 ${archived.map(s => `
                   <div class="story-grid-item" style="position:relative;aspect-ratio:9/16;border-radius:12px;overflow:hidden;background:#111;opacity:0.6;">
                     <img src="${s.image}" style="width:100%;height:100%;object-fit:cover;">
                     <div style="position:absolute;top:6px;right:6px;font-size:10px;color:rgba(255,255,255,0.7);background:rgba(0,0,0,0.4);padding:2px 6px;border-radius:4px;">${t('stories_expired')}</div>
-                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="Delete"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
+                    ${isOwn ? `<button style="position:absolute;bottom:6px;right:6px;width:22px;height:22px;border-radius:50%;background:rgba(220,38,38,0.7);border:none;color:#FFF;font-size:12px;cursor:pointer;display:flex;align-items:center;justify-content:center;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}')" title="${t('action_delete')}"><i class="icon-trash-2" style="font-size:11px;"></i></button>` : ''}
                   </div>
                 `).join('')}
               </div>
@@ -3341,9 +3476,9 @@ window.diademUI = {
       <div class="story-editor">
         <div class="story-editor-header">
           <button class="story-editor-btn" id="_se-close"><i class="icon-x"></i></button>
-          <span style="font-weight:700;font-size:15px;color:#FFF;letter-spacing:-0.01em;">New Story</span>
+          <span style="font-weight:700;font-size:15px;color:#FFF;letter-spacing:-0.01em;">${t('stories_new')}</span>
           <button class="story-editor-btn story-editor-publish" id="_se-publish" disabled>
-            <i class="icon-send" style="font-size:15px;"></i> Post
+            <i class="icon-send" style="font-size:15px;"></i> ${t('stories_post')}
           </button>
         </div>
         <div class="story-editor-canvas-area">
@@ -3351,8 +3486,8 @@ window.diademUI = {
             <canvas id="_se-canvas" width="1080" height="1920"></canvas>
             <div id="_se-placeholder" class="se-placeholder" onclick="document.getElementById('_se-file').click()">
               <div class="se-placeholder-icon"><i class="icon-image"></i></div>
-              <div class="se-placeholder-text">Add Photo or Video</div>
-              <div class="se-placeholder-sub">or choose a gradient background below</div>
+              <div class="se-placeholder-text">${t('stories_add_photo')}</div>
+              <div class="se-placeholder-sub">${t('stories_choose_gradient')}</div>
             </div>
             <input type="file" id="_se-file" accept="image/*,video/*" style="display:none;">
             <div id="_se-text-layers" style="position:absolute;inset:0;pointer-events:none;z-index:2;"></div>
@@ -3545,7 +3680,7 @@ window.diademUI = {
 
     // Close button
     overlay.querySelector('#_se-close').addEventListener('click', () => {
-      if (hasContent()) { if (!confirm('Discard this story?')) return; }
+      if (hasContent()) { if (!confirm(t('stories_discard'))) return; }
       overlay.remove();
     });
 
@@ -3628,16 +3763,16 @@ window.diademUI = {
           panel.style.display = 'block';
           panel.innerHTML = `
             <div style="padding:14px 16px;">
-              <div class="se-panel-title">Background</div>
+              <div class="se-panel-title">${t('stories_bg')}</div>
               <div style="display:flex;gap:8px;margin-bottom:14px;">
                 <button class="btn" id="_se-bg-photo" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#FFF;border-radius:12px;padding:10px;font-size:13px;cursor:pointer;">
-                  <i class="icon-image" style="margin-right:6px;"></i> Photo
+                  <i class="icon-image" style="margin-right:6px;"></i> ${t('stories_photo')}
                 </button>
                 <button class="btn" id="_se-bg-camera" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.1);color:#FFF;border-radius:12px;padding:10px;font-size:13px;cursor:pointer;">
-                  <i class="icon-camera" style="margin-right:6px;"></i> Camera
+                  <i class="icon-camera" style="margin-right:6px;"></i> ${t('stories_camera')}
                 </button>
               </div>
-              <div class="se-panel-title">Gradients</div>
+              <div class="se-panel-title">${t('stories_gradients')}</div>
               <div class="se-gradient-grid">
                 ${GRADIENTS.map((g, i) => `<div class="se-bg-option${bgGradient === g.css ? ' active' : ''}" data-idx="${i}" style="background:${g.css};" title="${g.name}"></div>`).join('')}
               </div>
@@ -3659,15 +3794,15 @@ window.diademUI = {
           panel.innerHTML = `
             <div style="padding:14px 16px;">
               <div style="display:flex;gap:8px;margin-bottom:12px;">
-                <input id="_se-text-input" placeholder="Type something..." style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:10px 14px;color:#FFF;font-size:14px;outline:none;" autofocus>
-                <button id="_se-add-text" style="background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;color:#FFF;border-radius:12px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">Add</button>
+                <input id="_se-text-input" placeholder="${t('stories_type_text')}" style="flex:1;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);border-radius:12px;padding:10px 14px;color:#FFF;font-size:14px;outline:none;" autofocus>
+                <button id="_se-add-text" style="background:linear-gradient(135deg,#6366F1,#8B5CF6);border:none;color:#FFF;border-radius:12px;padding:0 16px;font-size:13px;font-weight:600;cursor:pointer;white-space:nowrap;">${t('stories_add_text_btn')}</button>
               </div>
-              <div class="se-panel-title">Style</div>
+              <div class="se-panel-title">${t('stories_style')}</div>
               <div style="display:flex;gap:6px;overflow-x:auto;padding-bottom:8px;scrollbar-width:none;">
                 ${TEXT_STYLES.map((s, i) => `<div class="se-style-chip${i === 0 ? ' active' : ''}" data-style="${i}" style="background:${s.bg === 'transparent' ? 'rgba(255,255,255,0.06)' : (s.bg?.startsWith('linear') ? s.bg : s.bg)};color:${s.color};font-weight:${s.weight || '600'};${s.shadow ? 'text-shadow:' + s.shadow + ';' : ''}${s.stroke ? '-webkit-text-stroke:0.5px #000;' : ''}">${s.name}</div>`).join('')}
               </div>
               <div style="display:flex;gap:10px;align-items:center;margin-top:4px;">
-                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">Size</span>
+                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">${t('stories_size')}</span>
                 <input type="range" id="_se-text-size" min="14" max="56" value="22" style="flex:1;accent-color:#6366F1;height:4px;">
                 <span id="_se-text-size-val" style="font-size:11px;color:rgba(255,255,255,0.4);min-width:24px;text-align:right;">22</span>
               </div>
@@ -3721,18 +3856,18 @@ window.diademUI = {
           const DRAW_COLORS = ['#FFFFFF','#FF3B30','#34C759','#007AFF','#FFD60A','#FF2D55','#5856D6','#FF9500','#00C7BE','#BF5AF2'];
           panel.innerHTML = `
             <div style="padding:14px 16px;">
-              <div class="se-panel-title">Color</div>
+              <div class="se-panel-title">${t('stories_color')}</div>
               <div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap;">
                 ${DRAW_COLORS.map(c => `<div class="se-color-dot${c === drawColor ? ' active' : ''}" data-color="${c}" style="background:${c};"></div>`).join('')}
               </div>
               <div style="display:flex;gap:10px;align-items:center;margin-bottom:10px;">
-                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">Size</span>
+                <span style="font-size:11px;color:rgba(255,255,255,0.35);min-width:28px;">${t('stories_size')}</span>
                 <input type="range" min="1" max="24" value="${drawWidth}" style="flex:1;accent-color:#6366F1;height:4px;" id="_se-draw-size">
                 <div id="_se-draw-preview" style="width:${drawWidth * 2}px;height:${drawWidth * 2}px;border-radius:50%;background:${drawColor};transition:all 0.15s;flex-shrink:0;"></div>
               </div>
               <div style="display:flex;gap:8px;">
-                <button id="_se-draw-undo" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-rotate-ccw" style="margin-right:4px;font-size:12px;"></i> Undo</button>
-                <button id="_se-draw-clear" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#EF4444;border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-trash-2" style="margin-right:4px;font-size:12px;"></i> Clear</button>
+                <button id="_se-draw-undo" style="flex:1;background:rgba(255,255,255,0.06);border:1px solid rgba(255,255,255,0.08);color:rgba(255,255,255,0.6);border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-rotate-ccw" style="margin-right:4px;font-size:12px;"></i> ${t('stories_undo')}</button>
+                <button id="_se-draw-clear" style="flex:1;background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.2);color:#EF4444;border-radius:10px;padding:8px;font-size:12px;cursor:pointer;"><i class="icon-trash-2" style="margin-right:4px;font-size:12px;"></i> ${t('stories_clear')}</button>
               </div>
             </div>`;
           const sizeInput = panel.querySelector('#_se-draw-size');
@@ -3761,7 +3896,7 @@ window.diademUI = {
 
           panel.innerHTML = `
             <div style="padding:14px 16px;">
-              <div class="se-panel-title">Filters</div>
+              <div class="se-panel-title">${t('stories_filters')}</div>
               <div style="display:flex;gap:8px;overflow-x:auto;padding-bottom:6px;scrollbar-width:none;">
                 ${FILTERS.map((f, i) => `<div class="se-filter-card${i === currentFilter ? ' active' : ''}" data-filter="${i}">
                   ${thumbSrc ? `<img src="${thumbSrc}" style="filter:${f.css || 'none'};">` : `<div style="width:72px;height:80px;display:flex;align-items:center;justify-content:center;font-size:24px;filter:${f.css || 'none'};">${f.icon}</div>`}
@@ -3780,16 +3915,16 @@ window.diademUI = {
         } else if (tool === 'duration') {
           panel.style.display = 'block';
           const durations = [
-            { label: '6h', value: 6, desc: '6 hours' },
-            { label: '12h', value: 12, desc: '12 hours' },
-            { label: '24h', value: 24, desc: '1 day' },
-            { label: '48h', value: 48, desc: '2 days' },
-            { label: '7d', value: 168, desc: '1 week' },
-            { label: '∞', value: 0, desc: 'Permanent' },
+            { label: '6h', value: 6, desc: t('stories_dur_6h') },
+            { label: '12h', value: 12, desc: t('stories_dur_12h') },
+            { label: '24h', value: 24, desc: t('stories_dur_1d') },
+            { label: '48h', value: 48, desc: t('stories_dur_2d') },
+            { label: '7d', value: 168, desc: t('stories_dur_1w') },
+            { label: '∞', value: 0, desc: t('stories_dur_permanent') },
           ];
           panel.innerHTML = `
             <div style="padding:14px 16px;">
-              <div class="se-panel-title">Story Duration</div>
+              <div class="se-panel-title">${t('stories_duration')}</div>
               <div style="display:flex;flex-wrap:wrap;gap:8px;">
                 ${durations.map(d => `<div class="se-duration-chip${d.value === storyDuration ? ' active' : ''}" data-dur="${d.value}">
                   <div style="font-size:16px;font-weight:700;">${d.label}</div>
@@ -3818,20 +3953,20 @@ window.diademUI = {
       const textData = textOverlays.map(t => ({ text: t.text, x: t.x, y: t.y, styleIdx: t.styleIdx, size: t.size }));
       try {
         await node.createStory({ image: finalImage, text: textData.length > 0 ? textData[0].text : '', textStyle: { overlays: textData, stickers: stickerOverlays, filter: currentFilter }, duration: storyDuration });
-        showToast('Story published!', 'success');
+        showToast(t('stories_published'), 'success');
         overlay.remove();
         renderFeed();
       } catch (err) {
         showToast(err.message, 'error');
         publishBtn.disabled = false;
-        publishBtn.innerHTML = '<i class="icon-send" style="font-size:15px;"></i> Post';
+        publishBtn.innerHTML = '<i class="icon-send" style="font-size:15px;"></i> ' + t('stories_post');
       }
     });
 
     // Close on overlay click
     overlay.addEventListener('click', (e) => {
       if (e.target === overlay) {
-        if (hasContent()) { if (!confirm('Discard this story?')) return; }
+        if (hasContent()) { if (!confirm(t('stories_discard'))) return; }
         overlay.remove();
       }
     });
@@ -3844,19 +3979,19 @@ window.diademUI = {
     const stories = node.blockchain.state.stories.get(address);
     if (stories) {
       const s = stories.find(s => s.id === storyId);
-      if (s) { s.hidden = true; showToast('Story hidden', 'info'); renderFeed(); }
+      if (s) { s.hidden = true; showToast(t('stories_hidden'), 'info'); renderFeed(); }
     }
   },
 
   async deleteStory(address, storyId) {
-    if (!confirm('Delete this story permanently?')) return;
+    if (!confirm(t('stories_delete_confirm'))) return;
     try {
       await node.deleteStory(storyId);
-      showToast('Story deleted', 'success');
+      showToast(t('stories_deleted'), 'success');
       renderProfile(address);
       renderFeed();
     } catch (err) {
-      showToast('Failed to delete story: ' + err.message, 'error');
+      showToast(t('stories_delete_error') + ': ' + err.message, 'error');
     }
   },
 
@@ -3900,7 +4035,7 @@ window.diademUI = {
               </div>
             </div>
             <div style="display:flex;align-items:center;gap:6px;">
-              ${isOwn ? `<button style="background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border:none;color:rgba(255,255,255,0.7);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}');this.closest('.story-viewer-overlay').remove()" title="Delete"><i class="icon-trash-2"></i></button>` : ''}
+              ${isOwn ? `<button style="background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border:none;color:rgba(255,255,255,0.7);width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:14px;" onclick="event.stopPropagation();window.diademUI.deleteStory('${address}','${s.id}');this.closest('.story-viewer-overlay').remove()" title="${t('action_delete')}"><i class="icon-trash-2"></i></button>` : ''}
               <button style="background:rgba(255,255,255,0.1);backdrop-filter:blur(8px);border:none;color:#FFF;width:34px;height:34px;border-radius:50%;display:flex;align-items:center;justify-content:center;cursor:pointer;font-size:18px;" onclick="this.closest('.story-viewer-overlay').remove()"><i class="icon-x"></i></button>
             </div>
           </div>
@@ -4203,6 +4338,46 @@ export async function initUI() {
 
   // Set HTML lang from saved preference
   document.documentElement.lang = getLang() === 'uk' ? 'uk' : 'en';
+
+  // ─── QR Import: check URL for ?import=seed-phrase ─────
+  const urlParams = new URLSearchParams(window.location.search);
+  const importSeed = urlParams.get('import');
+  if (importSeed && importSeed.includes('-')) {
+    // Clean URL immediately (remove ?import= so seed phrase isn't visible/shared)
+    const cleanUrl = window.location.origin + window.location.pathname + window.location.hash;
+    history.replaceState(null, '', cleanUrl);
+
+    const seedWords = importSeed.split('-').map(w => w.toLowerCase().trim()).filter(Boolean);
+    if (seedWords.length === 12) {
+      // Check if this is already the current wallet's seed
+      const currentSeed = node.wallet?.seedPhrase;
+      const currentSeedStr = Array.isArray(currentSeed) ? currentSeed.join(' ') : (currentSeed || '');
+      const importSeedStr = seedWords.join(' ');
+
+      if (currentSeedStr === importSeedStr) {
+        // Same wallet — just confirm
+        showToast(t('qr_import_success'), 'success', 2000);
+      } else {
+        // Different wallet — ask to import
+        await new Promise((resolve) => {
+          showConfirm(
+            t('qr_import_title'),
+            t('qr_import_desc'),
+            async () => {
+              try {
+                await node.importFromSeed(seedWords);
+                showToast(t('qr_import_success'), 'success');
+              } catch (e) {
+                showToast(e.message, 'error');
+              }
+              resolve();
+            },
+            () => resolve()
+          );
+        });
+      }
+    }
+  }
 
   // Відновити останню сторінку після перезавантаження
   const hashPage = window.location.hash.slice(1);

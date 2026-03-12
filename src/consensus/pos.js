@@ -59,8 +59,24 @@ export class ProofOfStake {
         const latestBlock = this.blockchain.getLatestBlock();
         const selected = await this.selectValidator(latestBlock.hash, validators);
 
-        // Check if we are the selected validator OR there are no validators yet
-        const isOurTurn = !selected || selected.address === address;
+        // Check if we are the selected validator
+        // When no validators, use block hash + address to deterministically pick one producer
+        // (prevents all nodes from competing and creating chain splits)
+        let isOurTurn = false;
+        if (selected) {
+          isOurTurn = selected.address === address;
+        } else if (validators.length === 0) {
+          // Hash(prevHash + address) — only the node whose hash is smallest produces
+          const mySlot = await sha256(latestBlock.hash + address);
+          isOurTurn = true; // allow, but add jitter based on hash to reduce collisions
+          // Delay production by hash-derived offset (0-5s) to reduce simultaneous blocks
+          const jitter = parseInt(mySlot.slice(0, 4), 16) % 5000;
+          await new Promise(r => setTimeout(r, jitter));
+          // Re-check if someone else already produced a block during our jitter
+          if (this.blockchain.getLatestBlock().hash !== latestBlock.hash) {
+            isOurTurn = false;
+          }
+        }
         const hasPendingTxs = this.blockchain.mempool.length > 0;
 
         if (isOurTurn && hasPendingTxs) {

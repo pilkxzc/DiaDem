@@ -10,6 +10,11 @@ html { padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) 0 env(
 
 /* Smooth scrolling & overscroll */
 html { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+/* Prevent horizontal overflow on mobile */
+html, body { overflow-x: hidden; max-width: 100vw; }
+/* Long words and addresses should break rather than overflow */
+.post-content, .post-handle, .sp-content, .profile-wallet, .tx-detail, .notif-text,
+.chat-bubble, .message-item, .dm-message { word-break: break-word; overflow-wrap: break-word; }
 
 button, a, input, textarea, select, [role="button"] { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 
@@ -2560,6 +2565,11 @@ select.input-field {
   .wallet-cards { grid-template-columns: 1fr; }
   .stat-cards { grid-template-columns: repeat(2, 1fr); }
 
+  /* Wallet inline grids (app.js) — force responsive */
+  .wallet-top-cards { grid-template-columns: repeat(2, 1fr) !important; gap: 12px !important; }
+  .wallet-rep-stats-row { grid-template-columns: repeat(2, 1fr) !important; }
+  .wallet-info-grid { grid-template-columns: 1fr !important; gap: 16px !important; }
+
   /* Landing page */
   .landing-nav { padding: 16px 20px; }
   .landing-nav-links { display: none; }
@@ -2675,6 +2685,19 @@ select.input-field {
 
   /* Story bar */
   .story-bar { padding: 12px 16px; gap: 12px; }
+
+  /* Story bar items — mobile sizing */
+  .story-bar-item { min-width: 64px; }
+  .story-bar-item img, .story-bar-item .story-bar-avatar { width: 56px; height: 56px; }
+
+  /* Staking page */
+  .staking-cards { grid-template-columns: 1fr !important; }
+
+  /* Profile stories/archive grids */
+  .profile-stories-grid { grid-template-columns: repeat(3, 1fr) !important; }
+
+  /* Global fix: prevent any overflow from inline styles */
+  .card { overflow: hidden; }
 }
 
 @media (max-width: 480px) {
@@ -2737,6 +2760,12 @@ select.input-field {
   .compose-body { flex: 1; min-height: 0; }
   .compose-textarea { min-height: 80px; flex: 1; }
 
+  /* Wallet inline grids — single column on small phones */
+  .wallet-top-cards { grid-template-columns: 1fr !important; }
+  .wallet-rep-stats-row { grid-template-columns: repeat(2, 1fr) !important; }
+  .wallet-info-grid { grid-template-columns: 1fr !important; gap: 12px !important; }
+  .wallet-rep-stats-row > div { padding: 12px 8px !important; }
+
   /* Shop */
   .shop-equipped-grid { grid-template-columns: 1fr; }
   .shop-filter-tabs { gap: 3px; }
@@ -2752,6 +2781,18 @@ select.input-field {
 
   /* FAB */
   .mobile-fab { bottom: 76px; width: 48px; height: 48px; }
+
+  /* Explore — single column on very small screens */
+  .explore-grid { grid-template-columns: 1fr; }
+
+  /* Profile stories/archive grids — 2 columns on small phones */
+  .profile-stories-grid { grid-template-columns: repeat(2, 1fr) !important; }
+
+  /* Story bar compact */
+  .story-bar { padding: 8px 10px; gap: 8px; }
+  .story-bar-item { min-width: 56px; }
+  .story-bar-item img, .story-bar-item .story-bar-avatar { width: 48px; height: 48px; }
+  .story-bar-name { font-size: 9px; }
 }
 
 /* ─── Reactions ─────────────────────────────────────── */
@@ -2880,8 +2921,8 @@ select.input-field {
   border: 1px solid var(--divider);
   border-radius: 16px;
   padding: 28px;
-  min-width: 340px;
-  max-width: 440px;
+  min-width: min(340px, 92vw);
+  max-width: min(440px, 92vw);
   box-shadow: 0 20px 60px rgba(0,0,0,0.3);
   animation: scaleIn 0.2s ease;
 }
@@ -3541,5 +3582,27 @@ select.input-field {
   }
   .story-editor-panel {
     max-height: 160px;
+  }
+}
+
+/* ─── QR Promo Card ─────────────────────────────────── */
+.qr-promo-card {
+  border: 1px solid var(--accent) !important;
+  background: linear-gradient(135deg, var(--bg-card) 0%, color-mix(in srgb, var(--accent) 8%, var(--bg-card)) 100%) !important;
+  animation: qrPromoFadeIn 0.4s ease;
+}
+.qr-promo-card:hover {
+  border-color: var(--accent) !important;
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 15%, transparent);
+}
+@keyframes qrPromoFadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@media (max-width: 500px) {
+  .qr-promo-card > div:last-of-type {
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
   }
 }

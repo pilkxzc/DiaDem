@@ -12,10 +12,25 @@
  */
 
 import { createServer } from 'http';
-import { readFile, writeFile, stat, mkdir } from 'fs/promises';
+import { createServer as createHttpsServer } from 'https';
+import { readFile, writeFile, stat, mkdir, access } from 'fs/promises';
+import { readFileSync } from 'fs';
 import { join, extname } from 'path';
 import { fileURLToPath } from 'url';
+import { networkInterfaces } from 'os';
 import { WebSocketServer } from 'ws';
+import QRCode from 'qrcode';
+
+/** Get local network IP (for LAN access from phone) */
+function getLocalIP() {
+  const nets = networkInterfaces();
+  for (const name of Object.keys(nets)) {
+    for (const net of nets[name]) {
+      if (net.family === 'IPv4' && !net.internal) return net.address;
+    }
+  }
+  return '127.0.0.1';
+}
 
 const __dirname = fileURLToPath(new URL('.', import.meta.url));
 
@@ -88,8 +103,18 @@ const MIME = {
   '.wasm': 'application/wasm',
 };
 
-// ─── HTTP Server ─────────────────────────────────────────────
-const server = createServer(async (req, res) => {
+// ─── HTTP/HTTPS Server ───────────────────────────────────────
+// Use HTTPS if certs exist (required for crypto.subtle on LAN devices)
+const CERT_PATH = join(__dirname, 'data', 'cert.pem');
+const KEY_PATH = join(__dirname, 'data', 'key.pem');
+let useHttps = false;
+try {
+  await access(CERT_PATH);
+  await access(KEY_PATH);
+  useHttps = true;
+} catch { /* no certs, fall back to HTTP */ }
+
+const requestHandler = async (req, res) => {
   // CORS for dev
   if (DEV) {
     res.setHeader('Access-Control-Allow-Origin', '*');
@@ -124,6 +149,35 @@ const server = createServer(async (req, res) => {
     }
     res.writeHead(200, { 'Content-Type': 'application/json' });
     res.end(JSON.stringify({ peers, total: peers.length }));
+    return;
+  }
+
+  // API: QR code generation (renders PNG of any data)
+  if (pathname === '/api/qr') {
+    const data = url.searchParams.get('data');
+    const size = Math.min(parseInt(url.searchParams.get('size') || '300'), 1000);
+    if (!data) {
+      res.writeHead(400, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'Missing data parameter' }));
+      return;
+    }
+    try {
+      const pngBuffer = await QRCode.toBuffer(data, {
+        type: 'png',
+        width: size,
+        margin: 2,
+        errorCorrectionLevel: 'M',
+        color: { dark: '#000000', light: '#FFFFFF' },
+      });
+      res.writeHead(200, {
+        'Content-Type': 'image/png',
+        'Cache-Control': 'private, max-age=3600',
+      });
+      res.end(pngBuffer);
+    } catch (e) {
+      res.writeHead(500, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ error: 'QR generation failed' }));
+    }
     return;
   }
 
@@ -180,7 +234,23 @@ const server = createServer(async (req, res) => {
       res.end('Internal Server Error');
     }
   }
-});
+};
+
+const server = useHttps
+  ? createHttpsServer({ cert: readFileSync(CERT_PATH), key: readFileSync(KEY_PATH) }, requestHandler)
+  : createServer(requestHandler);
+
+// HTTP→HTTPS redirect when HTTPS is enabled
+let httpRedirectServer = null;
+if (useHttps) {
+  const REDIRECT_PORT = PORT + 1; // e.g. 3001 redirects to 3000 (HTTPS)
+  httpRedirectServer = createServer((req, res) => {
+    const host = (req.headers.host || '').replace(/:\d+$/, '');
+    res.writeHead(302, { Location: `https://${host}:${PORT}${req.url}` });
+    res.end();
+  });
+  httpRedirectServer.listen(REDIRECT_PORT, '0.0.0.0');
+}
 
 // ─── WebSocket Signaling Server + Node ───────────────────────
 // Handles peer discovery, WebRTC signaling relay,
@@ -473,17 +543,26 @@ setInterval(() => {
 // ─── Start ───────────────────────────────────────────────────
 await loadServerState();
 
-server.listen(PORT, () => {
+server.listen(PORT, '0.0.0.0', () => {
+  const localIP = getLocalIP();
+  const proto = useHttps ? 'https' : 'http';
+  const wsproto = useHttps ? 'wss' : 'ws';
   console.log('');
-  console.log('  ╔══════════════════════════════════════════╗');
-  console.log('  ║          DiaDem Node Server              ║');
-  console.log('  ╠══════════════════════════════════════════╣');
-  console.log(`  ║  HTTP:      http://localhost:${PORT}        ║`);
-  console.log(`  ║  Signal:    ws://localhost:${PORT}/signal    ║`);
-  console.log(`  ║  Mode:      ${DEV ? 'Development' : 'Production '}              ║`);
-  console.log('  ║  Network:   DiaDem Testnet               ║');
-  console.log(`  ║  Node:      ${SERVER_NODE_ID.padEnd(28)}║`);
-  console.log(`  ║  State:     height ${String(serverStateHeight).padEnd(21)}║`);
-  console.log('  ╚══════════════════════════════════════════╝');
+  console.log('  ╔══════════════════════════════════════════════════╗');
+  console.log('  ║              DiaDem Node Server                  ║');
+  console.log('  ╠══════════════════════════════════════════════════╣');
+  console.log(`  ║  Local:     ${proto}://localhost:${PORT}`.padEnd(52) + '║');
+  console.log(`  ║  Network:   ${proto}://${localIP}:${PORT}`.padEnd(52) + '║');
+  console.log(`  ║  Signal:    ${wsproto}://${localIP}:${PORT}/signal`.padEnd(52) + '║');
+  console.log(`  ║  Mode:      ${(DEV ? 'Development' : 'Production').padEnd(37)}║`);
+  console.log(`  ║  HTTPS:     ${(useHttps ? 'Enabled (self-signed)' : 'Disabled').padEnd(37)}║`);
+  console.log(`  ║  Node:      ${SERVER_NODE_ID.padEnd(37)}║`);
+  console.log(`  ║  State:     height ${String(serverStateHeight).padEnd(28)}║`);
+  console.log('  ╠══════════════════════════════════════════════════╣');
+  console.log(`  ║  Phone: ${proto}://${localIP}:${PORT}`.padEnd(52) + '║');
+  if (useHttps) {
+  console.log('  ║  (accept self-signed cert warning on phone)      ║');
+  }
+  console.log('  ╚══════════════════════════════════════════════════╝');
   console.log('');
 });

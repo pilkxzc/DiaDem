@@ -62,6 +62,7 @@ export class PeerNetwork {
     try {
       this.broadcastChannel = new BroadcastChannel('diadem-network');
       this._bcPeers = new Set(); // track known BroadcastChannel peers
+      this._bcPeerLastSeen = new Map(); // peerId -> timestamp
       this.broadcastChannel.onmessage = (event) => {
         const msg = event.data;
         if (msg.from === this.nodeId) return; // Ignore own messages
@@ -72,9 +73,22 @@ export class PeerNetwork {
           console.log(`[P2P] BroadcastChannel peer discovered: ${msg.from.slice(0, 12)}...`);
           if (this.onPeerConnect) this.onPeerConnect(msg.from);
         }
+        if (msg.from) this._bcPeerLastSeen.set(msg.from, Date.now());
 
         this._handleMessage(msg.from, msg);
       };
+
+      // Periodic cleanup: remove BC peers not seen in 60s
+      setInterval(() => {
+        const now = Date.now();
+        for (const [id, lastSeen] of this._bcPeerLastSeen) {
+          if (now - lastSeen > 60000) {
+            this._bcPeers.delete(id);
+            this._bcPeerLastSeen.delete(id);
+            if (this.onPeerDisconnect) this.onPeerDisconnect(id);
+          }
+        }
+      }, 30000);
 
     } catch (e) {
       console.warn('[P2P] BroadcastChannel not available');
@@ -93,10 +107,18 @@ export class PeerNetwork {
   _handleMessage(peerId, msg) {
     // Reassemble chunked messages
     if (msg.__chunk) {
-      const buf = this._chunkBuffers.get(msg.id) || { parts: new Array(msg.total), received: 0 };
+      const buf = this._chunkBuffers.get(msg.id) || { parts: new Array(msg.total), received: 0, createdAt: Date.now() };
       buf.parts[msg.index] = msg.data;
       buf.received++;
       this._chunkBuffers.set(msg.id, buf);
+
+      // Clean up stale chunk buffers (incomplete messages older than 30s)
+      if (this._chunkBuffers.size > 10) {
+        const now = Date.now();
+        for (const [id, b] of this._chunkBuffers) {
+          if (now - b.createdAt > 30000) this._chunkBuffers.delete(id);
+        }
+      }
       if (buf.received === msg.total) {
         // Validate all parts are present before joining
         if (buf.parts.some(p => p === undefined || p === null)) {

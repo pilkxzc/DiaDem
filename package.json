@@ -8,6 +8,7 @@
     "dev": "node server.js --dev"
   },
   "dependencies": {
+    "qrcode": "^1.5.4",
     "ws": "^8.18.0"
   }
 }

@@ -18,6 +18,42 @@ export const LIKE_REWARD = 0.1; // 0.1 DDM reward to post author per like
 export const FOLLOW_FEE = 0; // Free to follow
 export const PROFILE_UPDATE_FEE = 0.5; // 0.5 DDM to update profile
 
+// ─── Canonical Decoration Prices (server-side validation) ──
+// These MUST match the prices in SHOP_ITEMS (ui/app.js).
+// Client-supplied prices are NEVER trusted.
+export const DECOR_PRICES = {
+  'frame-gold': 50, 'frame-diamond': 150, 'frame-fire': 100, 'frame-neon': 80,
+  'frame-rainbow': 120, 'frame-ice': 70, 'frame-plasma': 130, 'frame-matrix': 90,
+  'frame-shadow': 60, 'frame-sakura': 85, 'frame-lava': 110, 'frame-emerald': 95,
+  'banner-galaxy': 75, 'banner-sunset': 40, 'banner-ocean': 40, 'banner-forest': 60,
+  'banner-aurora': 100, 'banner-cyberpunk': 90, 'banner-retrowave': 85, 'banner-volcano': 70,
+  'banner-arctic': 55, 'banner-nebula': 110, 'banner-midnight': 45, 'banner-cherry': 55,
+  'banner-matrix': 80, 'banner-gold': 120,
+  'badge-verified': 200, 'badge-star': 100, 'badge-crown': 300, 'badge-bolt': 75,
+  'badge-gem': 250, 'badge-shield': 150, 'badge-flame': 80, 'badge-heart': 60,
+  'badge-globe': 120, 'badge-code': 180, 'badge-palette': 160, 'badge-music': 140,
+  'badge-camera': 130, 'badge-rocket': 200, 'badge-trophy': 350, 'badge-eye': 175,
+  'badge-infinity': 500,
+  'anim-glow': 60, 'anim-sparkle': 90, 'anim-gradient-name': 80, 'anim-pulse': 70,
+  'anim-float': 85, 'anim-glitch': 120, 'anim-typing': 55, 'anim-rainbow-border': 150,
+  'bio-italic': 20, 'bio-glow': 45, 'bio-mono': 25, 'bio-bold': 15, 'bio-gradient': 65,
+  'name-red': 30, 'name-purple': 30, 'name-gold': 50, 'name-cyan': 30,
+  'name-gradient': 100, 'name-emerald': 35, 'name-rose': 35, 'name-amber': 35,
+  'name-ice': 40, 'name-fire-gradient': 120, 'name-ocean-gradient': 110, 'name-rainbow': 200,
+  'title-creator': 50, 'title-developer': 50, 'title-artist': 50, 'title-musician': 50,
+  'title-trader': 50, 'title-gamer': 50, 'title-influencer': 75, 'title-whale': 100,
+  'title-og': 150, 'title-degen': 40, 'title-hodler': 60, 'title-builder': 75,
+  'title-validator': 100, 'title-legend': 500,
+  'poststyle-glow': 80, 'poststyle-border': 40, 'poststyle-dark': 35,
+  'poststyle-gradient-bg': 70, 'poststyle-neon-border': 95, 'poststyle-gold-border': 110,
+  'font-playfair': 30, 'font-oswald': 25, 'font-lobster': 35, 'font-pacifico': 35,
+  'font-dancing': 30, 'font-righteous': 30, 'font-bebas': 25, 'font-permanent': 40,
+  'font-caveat': 25, 'font-monoton': 50, 'font-orbitron': 40, 'font-press-start': 45,
+  'font-cinzel': 35, 'font-comfortaa': 25, 'font-abril': 35, 'font-russo': 30,
+  'font-sacramento': 30, 'font-quicksand': 20, 'font-audiowide': 35, 'font-bangers': 30,
+  'font-creepster': 40, 'font-fredoka': 25, 'font-satisfy': 30, 'font-special-elite': 35,
+};
+
 // ─── Reputation Constants ───────────────────────────────
 export const REP_POST = 1; // +1 rep for posting
 export const REP_LIKE_RECEIVED = 2; // +2 rep when your post gets liked
@@ -76,6 +112,8 @@ export class WorldState {
     this.directMessages = new Map();
     // Stories: address -> [{ id, author, image, text, textStyle, timestamp, views: Set }]
     this.stories = new Map();
+    // Faucet claims: Set of addresses that have claimed faucet (prevents re-claiming after spending)
+    this.faucetClaims = new Set();
   }
 
   /** Get balance for an address */
@@ -112,14 +150,14 @@ export class WorldState {
     else if (s >= 200000) rep.level = 'Sovereign';
     else if (s >= 150000) rep.level = 'Overlord';
     else if (s >= 100000) rep.level = 'Titan';
-    else if (s >= 70000) rep.level = 'Grandmaster';
-    else if (s >= 50000) rep.level = 'Master';
-    else if (s >= 30000) rep.level = 'Diamond';
-    else if (s >= 20000) rep.level = 'Platinum';
-    else if (s >= 10000) rep.level = 'Gold';
-    else if (s >= 5000) rep.level = 'Silver';
-    else if (s >= 2000) rep.level = 'Bronze';
-    else if (s >= 1000) rep.level = 'Legend';
+    else if (s >= 70000) rep.level = 'Legend';
+    else if (s >= 50000) rep.level = 'Grandmaster';
+    else if (s >= 30000) rep.level = 'Master';
+    else if (s >= 20000) rep.level = 'Diamond';
+    else if (s >= 10000) rep.level = 'Platinum';
+    else if (s >= 5000) rep.level = 'Gold';
+    else if (s >= 2000) rep.level = 'Silver';
+    else if (s >= 1000) rep.level = 'Bronze';
     else if (s >= 500) rep.level = 'Expert';
     else if (s >= 200) rep.level = 'Veteran';
     else if (s >= 100) rep.level = 'Active';
@@ -610,8 +648,14 @@ export class WorldState {
   }
 
   _applyProfileDecor(tx) {
-    const { itemId, slot, price } = tx.data;
-    if (!itemId || !slot || !price) return false;
+    const { itemId, slot } = tx.data;
+    if (!itemId || !slot) return false;
+
+    // Validate price against canonical item catalog (prevent client-set price exploit)
+    const canonicalPrice = DECOR_PRICES[itemId];
+    if (canonicalPrice == null || canonicalPrice <= 0) return false; // unknown item
+    const price = canonicalPrice;
+
     const fromBal = this.getBalance(tx.from);
     if (fromBal < price) return false;
     this.balances.set(tx.from, fromBal - price);
@@ -804,6 +848,7 @@ export class WorldState {
       ),
       totalStaked: this.totalStaked,
       blockHeight: this.blockHeight,
+      faucetClaims: [...this.faucetClaims],
     };
   }
 
@@ -902,6 +947,9 @@ export class WorldState {
     }
     state.totalStaked = data.totalStaked || 0;
     state.blockHeight = data.blockHeight || 0;
+    if (data.faucetClaims) {
+      state.faucetClaims = new Set(data.faucetClaims);
+    }
     return state;
   }
 }

@@ -37,23 +37,50 @@ export class Blockchain {
     return this;
   }
 
-  /** Claim initial DDM from faucet (called once per wallet) */
+  /** Claim initial DDM from faucet (called once per wallet, ever) */
   async claimFaucet(wallet) {
     const faucetAddress = '0x0000000000000000000000000000000000faucet';
-    if (this.state.getBalance(wallet.address) > 0) return; // Already has funds
+    if (!this.state.faucetClaims) this.state.faucetClaims = new Set();
+
+    // Already claimed — never give twice, even if balance is 0 (user spent it)
+    if (this.state.faucetClaims.has(wallet.address)) return;
+
+    // Already has balance — another session or state sync already gave funds
+    if (this.state.getBalance(wallet.address) > 0) {
+      // Mark as claimed so we don't re-check
+      this.state.faucetClaims.add(wallet.address);
+      return;
+    }
 
     const { Transaction, TX_TYPES } = await import('./transaction.js');
-    // Create a special faucet tx (system tx, like reward)
+    // Deterministic hash based on address — ensures same tx hash across devices
+    // This prevents double-application via processedTxHashes dedup
     const tx = new Transaction({
       type: TX_TYPES.REWARD,
       from: faucetAddress,
       to: wallet.address,
       amount: 10000,
       data: { reason: 'faucet_claim' },
-      nonce: Date.now(),
+      nonce: 0, // deterministic nonce for faucet
+      timestamp: 0, // deterministic timestamp for faucet
     });
     tx.hash = await tx.computeHash();
-    await this.addTransaction(tx);
+
+    // Check if this exact tx was already processed (cross-device dedup)
+    if (this.processedTxHashes.has(tx.hash)) {
+      this.state.faucetClaims.add(wallet.address);
+      return;
+    }
+
+    // Track the claim
+    this.state.faucetClaims.add(wallet.address);
+
+    // Apply directly to state (bypass addTransaction's REWARD rejection)
+    this.state.applyTransaction(tx, Date.now());
+    if (tx.hash) this.processedTxHashes.add(tx.hash);
+    this.mempool.push(tx);
+    for (const cb of this.txCallbacks) cb(tx);
+
     return tx;
   }
 
@@ -79,17 +106,21 @@ export class Blockchain {
       throw new Error('Invalid transaction structure');
     }
 
-    // Verify signature
-    if (tx.type !== TX_TYPES.REWARD) {
-      const txObj = tx instanceof Transaction ? tx : Transaction.fromJSON(tx);
-      const valid = await txObj.verify();
-      if (!valid) throw new Error('Invalid transaction signature');
+    // Reject REWARD transactions from the network — they are system-only
+    // (faucet claims go through claimFaucet(), block rewards through applyBlock())
+    if (tx.type === TX_TYPES.REWARD || tx.type === 'reward') {
+      throw new Error('REWARD transactions cannot be submitted directly');
+    }
 
-      // Verify sender matches public key
-      if (tx.publicKey) {
-        const derived = await addressFromPublicKey(tx.publicKey);
-        if (derived !== tx.from) throw new Error('Sender address does not match public key');
-      }
+    // Verify signature
+    const txObj = tx instanceof Transaction ? tx : Transaction.fromJSON(tx);
+    const valid = await txObj.verify();
+    if (!valid) throw new Error('Invalid transaction signature');
+
+    // Verify sender matches public key
+    if (tx.publicKey) {
+      const derived = await addressFromPublicKey(tx.publicKey);
+      if (derived !== tx.from) throw new Error('Sender address does not match public key');
     }
 
     // Check for duplicate
@@ -118,7 +149,6 @@ export class Blockchain {
       }
     }
 
-    const txObj = tx instanceof Transaction ? tx : Transaction.fromJSON(tx);
     this.mempool.push(txObj);
 
     // Apply transaction to state immediately for instant UI feedback
@@ -137,8 +167,8 @@ export class Blockchain {
   async createBlock(validatorAddress, validatorPublicKey, signFn) {
     const prevBlock = this.getLatestBlock();
 
-    // Select transactions from mempool
-    const txs = this.mempool.splice(0, MAX_TX_PER_BLOCK);
+    // Select transactions from mempool (don't remove yet — remove after block is confirmed)
+    const txs = this.mempool.slice(0, MAX_TX_PER_BLOCK);
 
     const block = new Block({
       index: prevBlock.index + 1,
@@ -176,13 +206,10 @@ export class Blockchain {
 
     // Verify block hash
     const computedHash = await block.computeHash();
-    // Allow both matching hash and blocks without pre-computed hash
-    if (block.hash && block.hash !== computedHash) {
-      // Recompute — sometimes serialization changes things
-      block.hash = computedHash;
-    }
     if (!block.hash) {
       block.hash = computedHash;
+    } else if (block.hash !== computedHash) {
+      throw new Error(`Block hash mismatch: expected ${computedHash.slice(0, 16)}, got ${block.hash.slice(0, 16)}`);
     }
 
     // Timestamp validation: block must not be more than 60s in the future
@@ -214,6 +241,18 @@ export class Blockchain {
     // Remove confirmed txs from mempool
     const confirmedHashes = new Set(block.transactions.map(tx => tx.hash));
     this.mempool = this.mempool.filter(tx => !confirmedHashes.has(tx.hash));
+
+    // Prune processedTxHashes to prevent unbounded memory growth
+    // Keep only hashes from the last 1000 blocks
+    const MAX_TRACKED_HASHES = 50000;
+    if (this.processedTxHashes.size > MAX_TRACKED_HASHES) {
+      const arr = [...this.processedTxHashes];
+      this.processedTxHashes = new Set(arr.slice(arr.length - MAX_TRACKED_HASHES));
+    }
+    if (this.state.processedTxs.size > MAX_TRACKED_HASHES) {
+      const arr = [...this.state.processedTxs];
+      this.state.processedTxs = new Set(arr.slice(arr.length - MAX_TRACKED_HASHES));
+    }
 
     // Notify listeners
     for (const cb of this.blockCallbacks) cb(block);
