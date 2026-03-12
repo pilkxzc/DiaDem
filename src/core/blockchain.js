@@ -124,6 +124,8 @@ export class Blockchain {
     // Apply transaction to state immediately for instant UI feedback
     // (will be re-validated when included in a block)
     this.state.applyTransaction(txObj, Date.now());
+    // Keep processedTxHashes in sync with state.processedTxs
+    if (txObj.hash) this.processedTxHashes.add(txObj.hash);
 
     // Notify listeners
     for (const cb of this.txCallbacks) cb(txObj);
@@ -286,6 +288,14 @@ export class Blockchain {
 
     this.chain = blocks;
     this.state = newState;
+    // Rebuild processedTxHashes to match new chain
+    this.processedTxHashes = new Set();
+    for (const block of blocks) {
+      for (const txData of block.transactions) {
+        const tx = txData instanceof Transaction ? txData : Transaction.fromJSON(txData);
+        if (tx.hash) this.processedTxHashes.add(tx.hash);
+      }
+    }
     // Clear mempool — txs may already be in the new chain
     this.mempool = [];
 
@@ -323,9 +333,13 @@ export class Blockchain {
     bc.chain = (data.chain || []).map(b => Block.fromJSON(b));
     bc.mempool = (data.mempool || []).map(tx => Transaction.fromJSON(tx));
 
-    // Rebuild state
+    // Rebuild state and processedTxHashes
     for (const block of bc.chain) {
       bc.state.applyBlock(block);
+      for (const txData of block.transactions) {
+        const tx = txData instanceof Transaction ? txData : Transaction.fromJSON(txData);
+        if (tx.hash) bc.processedTxHashes.add(tx.hash);
+      }
     }
 
     return bc;

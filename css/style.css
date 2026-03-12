@@ -2,7 +2,16 @@
 /* Reset & Base */
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
 
-button, a, input, textarea, select, [role="button"] { touch-action: manipulation; }
+/* iOS safe areas */
+html { padding: env(safe-area-inset-top, 0) env(safe-area-inset-right, 0) 0 env(safe-area-inset-left, 0); }
+
+/* Prevent iOS zoom on input focus */
+@media (max-width: 768px) { input, select, textarea { font-size: 16px !important; } }
+
+/* Smooth scrolling & overscroll */
+html { -webkit-overflow-scrolling: touch; overscroll-behavior-y: contain; }
+
+button, a, input, textarea, select, [role="button"] { touch-action: manipulation; -webkit-tap-highlight-color: transparent; }
 
 @media (hover: none) {
   .shop-item:hover, .post:hover, .message-item:hover { transform: none !important; }
@@ -2480,14 +2489,16 @@ select.input-field {
   bottom: 0;
   left: 0;
   right: 0;
-  height: 56px;
+  height: calc(56px + env(safe-area-inset-bottom, 0px));
   background: var(--bg-sidebar);
   border-top: 1px solid var(--divider);
   z-index: 200;
   justify-content: space-around;
-  align-items: center;
-  padding: 0 8px;
+  align-items: flex-start;
+  padding: 6px 8px 0;
   padding-bottom: env(safe-area-inset-bottom, 0px);
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
 }
 .mobile-bottom-nav a {
   display: flex;
@@ -2509,7 +2520,7 @@ select.input-field {
 .mobile-fab {
   display: none;
   position: fixed;
-  bottom: 72px;
+  bottom: calc(72px + env(safe-area-inset-bottom, 0px));
   right: 16px;
   width: 52px;
   height: 52px;
@@ -2532,89 +2543,215 @@ select.input-field {
 }
 
 @media (max-width: 768px) {
+  /* Core layout */
   .sidebar { display: none; }
   .main-content { margin-left: 0; padding-bottom: 64px; }
   .content-area { padding: 16px; }
   .mobile-bottom-nav { display: flex; }
   .mobile-fab { display: flex; }
 
+  /* Auth */
   .auth-left, .setup-left { display: none; }
-  .wallet-cards { grid-template-columns: 1fr; }
-  .feature-cards, .steps { grid-template-columns: 1fr; }
-  .landing-hero h1 { font-size: 28px; }
-  .landing-hero p { font-size: 14px; }
-  .landing-stats { gap: 20px; flex-wrap: wrap; }
+  .auth-right, .setup-right { padding: 24px 16px; }
+  .auth-form { max-width: 100%; }
+  .auth-form h2 { font-size: 20px; }
 
-  /* Messages */
-  .messages-layout { flex-direction: column; }
-  .messages-list { width: 100%; min-width: unset; border-right: none; }
+  /* Wallet */
+  .wallet-cards { grid-template-columns: 1fr; }
+  .stat-cards { grid-template-columns: repeat(2, 1fr); }
+
+  /* Landing page */
+  .landing-nav { padding: 16px 20px; }
+  .landing-nav-links { display: none; }
+  .landing-nav-right { gap: 8px; }
+  .landing-nav-right .btn { padding: 8px 14px; font-size: 13px; }
+  .landing-hero { padding: 48px 20px 40px; }
+  .landing-hero h1 { font-size: 32px; }
+  .landing-hero .subtitle-italic { font-size: 22px; }
+  .landing-hero p { font-size: 14px; }
+  .landing-stats { gap: 16px; flex-wrap: wrap; justify-content: center; }
+  .landing-stat .val { font-size: 22px; }
+  .landing-section { padding: 40px 20px; }
+  .landing-section h2 { font-size: 24px; margin-bottom: 32px; }
+  .feature-cards, .steps { grid-template-columns: 1fr; gap: 16px; }
+  .feature-card, .step { padding: 24px 20px; }
+  .landing-cta { padding: 48px 20px; }
+  .landing-cta h2 { font-size: 26px; }
+  .landing-footer { padding: 20px; font-size: 12px; }
+
+  /* Messages — full-screen chat mode */
+  .messages-layout { flex-direction: column; height: calc(100vh - 56px); }
+  .messages-list { width: 100%; min-width: unset; border-right: none; max-height: 100%; }
   .chat-area { display: none; }
   .messages-layout.chat-open .messages-list { display: none; }
-  .messages-layout.chat-open .chat-area { display: flex; }
+  .messages-layout.chat-open .chat-area { display: flex; height: 100%; }
+  .chat-messages { padding: 16px 12px; }
+  .chat-bubble { max-width: 85%; font-size: 15px; }
+  .chat-input-area { padding: 12px; gap: 8px; }
+  .chat-header { padding: 12px 16px; }
 
   /* Settings */
   .settings-layout { flex-direction: column; }
   .settings-nav { display: none; }
   .settings-content { padding: 0; }
+  .setting-row { flex-direction: column; align-items: flex-start; gap: 12px; }
 
   /* Profile */
   .profile-top { flex-direction: column; align-items: center; text-align: center; }
-  .profile-stats { justify-content: center; }
+  .profile-stats { justify-content: center; flex-wrap: wrap; }
   .profile-name { font-size: 18px; }
+  .profile-cover { height: 160px; }
+  .profile-wallet { font-size: 11px; word-break: break-all; }
 
   /* Posts */
   .post { padding: 14px 0; }
-  .post-actions { gap: 12px; }
-  .post-action { font-size: 13px; }
+  .post-actions { gap: 10px; }
+  .post-action { font-size: 13px; padding: 6px 0; min-height: 36px; }
+  .post-action i { font-size: 18px; }
   .post-media-2 img, .post-media-3 img, .post-media-4 img { height: 120px; }
+  .post-header { gap: 10px; }
+  .post-time { font-size: 12px; }
 
-  /* Modals */
-  .modal { margin: 8px; max-width: none; width: calc(100% - 16px); }
+  /* Modals — full-screen on mobile */
+  .modal { margin: 0; max-width: none; width: 100%; border-radius: 16px 16px 0 0; max-height: 90vh; }
+  .modal-overlay { align-items: flex-end; }
   .confirm-dialog { margin: 8px; max-width: none; width: calc(100% - 16px); }
+  .confirm-box { min-width: auto; max-width: calc(100% - 32px); }
+
+  /* Compose modal — full-screen */
+  .compose-modal { max-width: 100%; border-radius: 0; max-height: 100vh; max-height: 100dvh; }
+  .compose-textarea { font-size: 16px; min-height: 100px; }
+  .compose-format-bar { flex-wrap: wrap; }
+  .compose-tools { gap: 0; }
+  .compose-tool { width: 38px; height: 38px; }
 
   /* Single post page */
-  .sp-header { flex-direction: column; gap: 8px; }
+  .sp-header { flex-direction: row; gap: 12px; padding: 12px 0; }
   .sp-content { font-size: 15px; }
-  .sp-actions { gap: 10px; flex-wrap: wrap; }
+  .sp-actions { gap: 8px; flex-wrap: wrap; }
+  .sp-author-row { flex-direction: column; align-items: flex-start; gap: 12px; }
 
   /* Page header */
   .page-header { padding: 12px 0; }
   .page-header h2 { font-size: 20px; }
 
-  /* Compose */
-  .compose-format-bar { flex-wrap: wrap; }
+  /* Seed phrase */
+  .seed-grid { grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .seed-word { padding: 6px 10px; font-size: 12px; }
+
+  /* Explore */
+  .explore-grid { grid-template-columns: repeat(2, 1fr); gap: 8px; }
+
+  /* Tabs — scrollable */
+  .tabs { overflow-x: auto; -webkit-overflow-scrolling: touch; scrollbar-width: none; }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab { white-space: nowrap; flex-shrink: 0; }
+
+  /* Filter pills — scrollable */
+  .filter-pills { overflow-x: auto; flex-wrap: nowrap; -webkit-overflow-scrolling: touch; scrollbar-width: none; padding-bottom: 4px; }
+  .filter-pills::-webkit-scrollbar { display: none; }
+  .pill { flex-shrink: 0; }
+
+  /* Tx rows */
+  .tx-row { gap: 10px; }
+  .tx-info .tx-detail { font-size: 12px; }
 
   /* Shop */
   .shop-equipped-grid { grid-template-columns: repeat(2, 1fr); }
   .shop-grid { grid-template-columns: 1fr; }
-  .shop-filter-tabs { gap: 4px; }
-  .shop-filter-tab { padding: 5px 10px; font-size: 12px; }
+  .shop-filter-tabs { gap: 4px; overflow-x: auto; flex-wrap: nowrap; scrollbar-width: none; }
+  .shop-filter-tabs::-webkit-scrollbar { display: none; }
+  .shop-filter-tab { padding: 5px 10px; font-size: 12px; flex-shrink: 0; }
   .shop-balance { padding: 16px; }
   .shop-balance-value { font-size: 22px; }
+
+  /* Reactions */
+  .reaction-picker { left: 0; right: 0; justify-content: center; }
+  .reaction-emoji { font-size: 20px; padding: 4px 5px; }
+
+  /* Toasts */
+  .toast-container { top: auto; bottom: 72px; right: 12px; left: 12px; }
+  .toast { min-width: auto; max-width: 100%; }
+
+  /* Story bar */
+  .story-bar { padding: 12px 16px; gap: 12px; }
 }
 
 @media (max-width: 480px) {
-  .content-area { padding: 12px; }
+  .content-area { padding: 10px; }
   .main-content { padding-bottom: 60px; }
 
+  /* Typography — tighter on small phones */
+  h1 { font-size: 22px; }
+  h2 { font-size: 18px; }
+  h3 { font-size: 16px; }
+
+  /* Landing */
+  .landing-hero h1 { font-size: 26px; }
+  .landing-hero .subtitle-italic { font-size: 18px; }
+  .landing-stats { gap: 12px; }
+  .landing-stat .val { font-size: 18px; }
+  .landing-stat .lbl { font-size: 11px; }
+  .landing-section h2 { font-size: 20px; }
+  .landing-cta h2 { font-size: 22px; }
+
+  /* Auth */
+  .auth-right, .setup-right { padding: 20px 12px; }
+  .auth-form h2 { font-size: 18px; }
+  .or-divider { margin: 14px 0; }
+
   /* Profile */
-  .profile-cover { height: 140px; }
+  .profile-cover { height: 120px; }
+  .profile-name { font-size: 16px; }
+  .profile-stats { gap: 12px; font-size: 13px; }
 
   /* Single post */
   .sp-content { font-size: 14px; }
   .sp-actions { font-size: 12px; }
+  .sp-stats-bar { gap: 12px; flex-wrap: wrap; }
 
   /* Posts */
   .post-content { font-size: 14px; }
   .post-media-2 img, .post-media-3 img, .post-media-4 img { height: 100px; }
+  .post-actions { gap: 6px; }
+  .post-repost-label { padding-left: 40px; }
+
+  /* Seed phrase */
+  .seed-grid { grid-template-columns: repeat(2, 1fr); }
+
+  /* Stat cards */
+  .stat-cards { grid-template-columns: 1fr; }
+  .stat-card .value { font-size: 20px; }
+
+  /* Explore */
+  .explore-grid { gap: 4px; }
+
+  /* Messages */
+  .chat-bubble { max-width: 90%; }
+  .chat-input-area { padding: 10px 8px; }
+  .message-item { padding: 10px 12px; }
+
+  /* Compose — full bleed */
+  #compose-modal { align-items: stretch; }
+  .compose-modal { border-radius: 0; height: 100vh; height: 100dvh; max-height: 100dvh; display: flex; flex-direction: column; }
+  .compose-body { flex: 1; min-height: 0; }
+  .compose-textarea { min-height: 80px; flex: 1; }
 
   /* Shop */
   .shop-equipped-grid { grid-template-columns: 1fr; }
   .shop-filter-tabs { gap: 3px; }
   .shop-filter-tab { padding: 4px 8px; font-size: 11px; }
 
-  /* Image editor */
-  .confirm-box { width: 95vw !important; max-width: 95vw !important; }
+  /* Confirm */
+  .confirm-box { width: 95vw !important; max-width: 95vw !important; padding: 20px; }
+
+  /* Bottom nav — larger touch targets */
+  .mobile-bottom-nav { height: 60px; }
+  .mobile-bottom-nav a { padding: 8px 14px; }
+  .mobile-bottom-nav a i { font-size: 22px; }
+
+  /* FAB */
+  .mobile-fab { bottom: 76px; width: 48px; height: 48px; }
 }
 
 /* ─── Reactions ─────────────────────────────────────── */

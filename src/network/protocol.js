@@ -448,10 +448,29 @@ export class Protocol {
     // 17. Reposts
     mergeSets(local.reposts, remoteState.reposts);
 
-    // 18. Direct messages
+    // 18. Stories
+    if (remoteState.stories) {
+      for (const [addr, stories] of remoteState.stories) {
+        if (!local.stories.has(addr)) {
+          local.stories.set(addr, stories.map(s => ({ ...s, views: s.views instanceof Set ? s.views : new Set(s.views || []) })));
+          changed = true;
+        } else {
+          const existing = local.stories.get(addr);
+          const ids = new Set(existing.map(s => s.id));
+          for (const story of stories) {
+            if (!ids.has(story.id)) {
+              existing.push({ ...story, views: story.views instanceof Set ? story.views : new Set(story.views || []) });
+              changed = true;
+            }
+          }
+        }
+      }
+    }
+
+    // 19. Direct messages
     mergeArraysById(local.directMessages, remoteState.directMessages);
 
-    // 19. Block height (take higher)
+    // 20. Block height (take higher)
     if (remoteState.blockHeight > local.blockHeight) {
       local.blockHeight = remoteState.blockHeight;
       changed = true;

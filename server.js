@@ -189,6 +189,31 @@ const server = createServer(async (req, res) => {
 const wss = new WebSocketServer({ server, path: '/signal' });
 const connectedPeers = new Map(); // peerId -> { ws, address, connectedAt }
 
+// ─── Rate Limiting ──────────────────────────────────────────
+const rateLimits = new Map(); // ip -> { count, resetAt }
+const RATE_LIMIT_WINDOW = 10000; // 10 seconds
+const RATE_LIMIT_MAX = 100; // max messages per window
+const MAX_MESSAGE_SIZE = 5 * 1024 * 1024; // 5MB max message
+
+function checkRateLimit(ip) {
+  const now = Date.now();
+  let entry = rateLimits.get(ip);
+  if (!entry || now > entry.resetAt) {
+    entry = { count: 0, resetAt: now + RATE_LIMIT_WINDOW };
+    rateLimits.set(ip, entry);
+  }
+  entry.count++;
+  return entry.count <= RATE_LIMIT_MAX;
+}
+
+// Clean up rate limit entries every 30s
+setInterval(() => {
+  const now = Date.now();
+  for (const [ip, entry] of rateLimits) {
+    if (now > entry.resetAt) rateLimits.delete(ip);
+  }
+}, 30000);
+
 /** Send the server's stored state to a specific peer via WS */
 function sendServerStateToPeer(ws, peerId) {
   if (!serverState || ws.readyState !== 1) return;

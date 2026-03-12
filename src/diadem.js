@@ -627,7 +627,9 @@ export class DiaDemNode {
     tx.sign(this.wallet.privateKey, this.wallet.publicKey).then(async () => {
       await this.blockchain.addTransaction(tx);
       this.protocol.broadcastTransaction(tx);
-    }).catch(() => {});
+    }).catch(err => {
+      console.error('[DiaDem] DM persist failed:', err.message);
+    });
 
     return msg;
   }
@@ -661,7 +663,7 @@ export class DiaDemNode {
     // 2) Instant P2P broadcast
     this.network.broadcast(MSG_TYPES.DM_INSTANT, { msg });
 
-    // 3) Persist on-chain (background)
+    // 3) Persist on-chain (await to ensure success, rollback on failure)
     const tx = new Transaction({
       type: TX_TYPES.DM_PAYMENT,
       from: this.wallet.address,
@@ -670,10 +672,23 @@ export class DiaDemNode {
       data: { memo, id: msgId },
       nonce: Date.now(),
     });
-    tx.sign(this.wallet.privateKey, this.wallet.publicKey).then(async () => {
+    try {
+      await tx.sign(this.wallet.privateKey, this.wallet.publicKey);
       await this.blockchain.addTransaction(tx);
       this.protocol.broadcastTransaction(tx);
-    }).catch(() => {});
+    } catch (err) {
+      // Rollback balance changes on failure
+      this.blockchain.state.balances.set(this.wallet.address, fromBal);
+      this.blockchain.state.balances.set(toAddress, toBal);
+      // Remove the optimistic DM message
+      const msgs = dm.get(key);
+      if (msgs) {
+        const idx = msgs.findIndex(m => m.id === msgId);
+        if (idx >= 0) msgs.splice(idx, 1);
+      }
+      this.emit('stateChange');
+      throw new Error(`DM payment failed: ${err.message}`);
+    }
 
     return msg;
   }
