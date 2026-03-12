@@ -169,7 +169,6 @@ export class Protocol {
     this.network.on(MSG_TYPES.DM_INSTANT, (peerId, payload) => {
       if (!payload.msg) return;
       const m = payload.msg;
-      const myAddr = this.blockchain.state.balances.keys().next().value; // any known addr
       // Only accept if we are the recipient (or sender on another tab)
       const key = [m.from, m.to].sort().join(':');
       const dm = this.blockchain.state.directMessages;
@@ -452,7 +451,7 @@ export class Protocol {
     // 18. Direct messages
     mergeArraysById(local.directMessages, remoteState.directMessages);
 
-    // 18. Block height (take higher)
+    // 19. Block height (take higher)
     if (remoteState.blockHeight > local.blockHeight) {
       local.blockHeight = remoteState.blockHeight;
       changed = true;
